@@ -21,7 +21,7 @@ In Xcode, add the package:
 
 ## 4. Wire App Config
 
-Replace the placeholder values in [SupabaseConfiguration.swift](/Users/ronit/Documents/hackathon/apps/ios/StudentStressCoach/Platform/Networking/SupabaseConfiguration.swift) with your project values.
+Provide `SUPABASE_URL` and `SUPABASE_ANON_KEY` to the app target used by [ios/MindMarginApp](/Users/adityakoka/Desktop/my-projects/pi%20hacks%20hackathon%20proj/ios/MindMarginApp), either through the environment or `Info.plist`.
 
 ## 5. Recommended Hackathon Auth
 

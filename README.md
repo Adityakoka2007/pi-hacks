@@ -5,8 +5,8 @@ MindMargin is a privacy-first student wellness app that uses `HealthKit`, calend
 ## Repository Layout
 
 ```text
-apps/
-  ios/StudentStressCoach/     SwiftUI starter structure
+ios/
+  MindMarginApp/              Active iOS app source used by the Xcode project
 backend/
   supabase/                   Supabase schema, policies, and setup files
 docs/                         Architecture and product notes
@@ -32,19 +32,16 @@ docs/                         Architecture and product notes
 
 ### iOS App
 
-The iOS app source layout is initialized under [apps/ios/StudentStressCoach](apps/ios/StudentStressCoach). This environment does not have full Xcode available, so the Xcode project/target was not generated here.
+The active iOS app source lives under [ios/MindMarginApp](/Users/adityakoka/Desktop/my-projects/pi%20hacks%20hackathon%20proj/ios/MindMarginApp) and is already connected to the checked-in Xcode project at [pi hacks.xcodeproj](/Users/adityakoka/Desktop/my-projects/pi%20hacks%20hackathon%20proj/pi%20hacks.xcodeproj).
 
 To finish setup locally:
 
-1. Create a new iOS App project named `MindMargin`
-2. Replace the generated source groups with the files from [apps/ios/StudentStressCoach](apps/ios/StudentStressCoach)
-3. Install the Supabase Swift client with Swift Package Manager:
-   - `https://github.com/supabase/supabase-swift`
-4. Add capabilities:
+1. Open [pi hacks.xcodeproj](/Users/adityakoka/Desktop/my-projects/pi%20hacks%20hackathon%20proj/pi%20hacks.xcodeproj)
+2. Add your `SUPABASE_URL` and `SUPABASE_ANON_KEY` values in the app environment or `Info.plist`
+3. Add capabilities if needed:
    - `HealthKit`
    - `Background Modes`
-5. Add usage descriptions in `Info.plist`
-6. Fill your Supabase config in the app environment
+4. Add any required usage descriptions in `Info.plist`
 
 ## MVP Architecture
 

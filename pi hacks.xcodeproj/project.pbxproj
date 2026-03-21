@@ -11,9 +11,9 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
-		B04DFFF22F6F28E50079326B /* mind margin/pi hacks */ = {
+		B04DFFF22F6F28E50079326B /* ios/MindMarginApp */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			path = "mind margin/pi hacks";
+			path = "ios/MindMarginApp";
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -32,7 +32,7 @@
 		B04DFFE72F6F28E40079326B = {
 			isa = PBXGroup;
 			children = (
-				B04DFFF22F6F28E50079326B /* mind margin/pi hacks */,
+				B04DFFF22F6F28E50079326B /* ios/MindMarginApp */,
 				B04DFFF12F6F28E50079326B /* Products */,
 			);
 			sourceTree = "<group>";
@@ -61,7 +61,7 @@
 			dependencies = (
 			);
 			fileSystemSynchronizedGroups = (
-				B04DFFF22F6F28E50079326B /* mind margin/pi hacks */,
+				B04DFFF22F6F28E50079326B /* ios/MindMarginApp */,
 			);
 			name = "pi hacks";
 			packageProductDependencies = (

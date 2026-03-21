@@ -133,7 +133,9 @@ serve(async (req) => {
         .from("daily_health_summaries")
         .select("sleep_hours, steps, resting_heart_rate, heart_rate_variability")
         .eq("user_id", user.id)
-        .eq("summary_date", targetDate)
+        .lte("summary_date", targetDate)
+        .order("summary_date", { ascending: false })
+        .limit(1)
         .maybeSingle(),
       supabase
         .from("daily_schedule_summaries")
