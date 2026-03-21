@@ -11,9 +11,9 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
-		B04DFFF22F6F28E50079326B /* pi hacks */ = {
+		B04DFFF22F6F28E50079326B /* mind margin/pi hacks */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			path = "pi hacks";
+			path = "mind margin/pi hacks";
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -32,7 +32,7 @@
 		B04DFFE72F6F28E40079326B = {
 			isa = PBXGroup;
 			children = (
-				B04DFFF22F6F28E50079326B /* pi hacks */,
+				B04DFFF22F6F28E50079326B /* mind margin/pi hacks */,
 				B04DFFF12F6F28E50079326B /* Products */,
 			);
 			sourceTree = "<group>";
@@ -61,7 +61,7 @@
 			dependencies = (
 			);
 			fileSystemSynchronizedGroups = (
-				B04DFFF22F6F28E50079326B /* pi hacks */,
+				B04DFFF22F6F28E50079326B /* mind margin/pi hacks */,
 			);
 			name = "pi hacks";
 			packageProductDependencies = (
@@ -251,6 +251,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = RLA5H6MJN3;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -282,6 +283,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = RLA5H6MJN3;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
