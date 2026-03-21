@@ -1,3 +1,4 @@
+import AuthenticationServices
 import Combine
 import Foundation
 import SwiftUI
@@ -392,6 +393,54 @@ final class MindMarginAppModel: ObservableObject {
         errorMessage = nil
     }
 
+    func signInWithApple(idToken: String, rawNonce: String?) async {
+        guard let supabaseService else {
+            errorMessage = "Supabase is not configured. Add SUPABASE_URL and SUPABASE_ANON_KEY."
+            return
+        }
+        errorMessage = nil
+        do {
+            try await supabaseService.signInWithApple(idToken: idToken, rawNonce: rawNonce)
+            hasAttemptedBackendSignIn = true
+            backendStatus = .connected
+            await refreshForecast()
+        } catch {
+            backendStatus = .localOnly("Sign in failed: \(error.localizedDescription)")
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func signInWithGoogle() async {
+        guard let supabaseService else {
+            errorMessage = "Supabase is not configured. Add SUPABASE_URL and SUPABASE_ANON_KEY."
+            return
+        }
+        errorMessage = nil
+        do {
+            try await supabaseService.signInWithGoogle()
+            hasAttemptedBackendSignIn = true
+            backendStatus = .connected
+            await refreshForecast()
+        } catch {
+            let ns = error as NSError
+            if ns.domain == ASWebAuthenticationSessionErrorDomain, ns.code == ASWebAuthenticationSessionError.canceledLogin.rawValue {
+                return
+            }
+            backendStatus = .localOnly("Google sign-in failed: \(error.localizedDescription)")
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func signOutFromBackend() {
+        supabaseService?.signOut()
+        hasAttemptedBackendSignIn = false
+        if supabaseService != nil {
+            backendStatus = .localOnly("Signed out. Cloud sync is off until you sign in again.")
+        } else {
+            backendStatus = .notConfigured
+        }
+    }
+
     func grantHealthAccess() {
         Task {
             do {
@@ -530,6 +579,12 @@ final class MindMarginAppModel: ObservableObject {
             return
         }
 
+        if supabaseService.isAuthenticated {
+            backendStatus = .connected
+            return
+        }
+
+        await supabaseService.restoreSessionIfNeeded()
         if supabaseService.isAuthenticated {
             backendStatus = .connected
             return

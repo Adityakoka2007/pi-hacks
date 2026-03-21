@@ -1,8 +1,13 @@
+import AuthenticationServices
+import CryptoKit
 import Foundation
+import Security
+import UIKit
 
 final class SupabaseService {
     struct Session: Decodable {
         let accessToken: String
+        let refreshToken: String?
         let user: User
 
         struct User: Decodable {
@@ -11,6 +16,7 @@ final class SupabaseService {
 
         enum CodingKeys: String, CodingKey {
             case accessToken = "access_token"
+            case refreshToken = "refresh_token"
             case user
         }
     }
@@ -271,6 +277,8 @@ final class SupabaseService {
     private(set) var sessionToken: String?
     private(set) var userId: String?
 
+    private static let refreshTokenStorageKey = "MindMargin.Supabase.refreshToken"
+
     init(configuration: SupabaseConfiguration, session: URLSession = .shared) {
         self.configuration = configuration
         self.session = session
@@ -290,9 +298,183 @@ final class SupabaseService {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = Data("{}".utf8)
 
-        let session = try await send(request, decode: Session.self, acceptedStatusCodes: [200])
-        sessionToken = session.accessToken
-        userId = session.user.id
+        let authSession = try await send(request, decode: Session.self, acceptedStatusCodes: [200])
+        applySession(authSession)
+    }
+
+    /// Reloads access token from stored refresh token (OAuth or anonymous).
+    func restoreSessionIfNeeded() async {
+        guard !isAuthenticated else { return }
+        guard let refresh = UserDefaults.standard.string(forKey: Self.refreshTokenStorageKey), !refresh.isEmpty else { return }
+        do {
+            try await refreshAccessToken(using: refresh)
+        } catch {
+            signOut()
+        }
+    }
+
+    func signOut() {
+        sessionToken = nil
+        userId = nil
+        UserDefaults.standard.removeObject(forKey: Self.refreshTokenStorageKey)
+    }
+
+    /// Native Sign in with Apple → Supabase `grant_type=id_token`.
+    func signInWithApple(idToken: String, rawNonce: String?) async throws {
+        var components = URLComponents(url: configuration.url.appendingPathComponent("auth/v1/token"), resolvingAgainstBaseURL: false)!
+        components.queryItems = [URLQueryItem(name: "grant_type", value: "id_token")]
+
+        var request = URLRequest(url: components.url!)
+        request.httpMethod = "POST"
+        request.setValue(configuration.anonKey, forHTTPHeaderField: "apikey")
+        request.setValue("Bearer \(configuration.anonKey)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONEncoder().encode(
+            IdTokenGrantBody(provider: "apple", idToken: idToken, nonce: rawNonce)
+        )
+
+        let authSession = try await send(request, decode: Session.self, acceptedStatusCodes: [200])
+        applySession(authSession)
+    }
+
+    /// Google OAuth via PKCE + system browser sheet (enable Google in Supabase; add redirect URL there).
+    @MainActor
+    func signInWithGoogle() async throws {
+        let redirect = configuration.oauthRedirectURL
+        guard let scheme = URL(string: redirect)?.scheme, !scheme.isEmpty else {
+            throw SupabaseServiceError.requestFailed("Invalid oauth redirect URL")
+        }
+
+        let verifier = Self.makePKCEVerifier()
+        let challenge = Self.makePKCEChallenge(from: verifier)
+
+        var components = URLComponents(url: configuration.url.appendingPathComponent("auth/v1/authorize"), resolvingAgainstBaseURL: false)!
+        components.queryItems = [
+            URLQueryItem(name: "provider", value: "google"),
+            URLQueryItem(name: "redirect_to", value: redirect),
+            URLQueryItem(name: "code_challenge", value: challenge),
+            URLQueryItem(name: "code_challenge_method", value: "S256"),
+        ]
+
+        guard let authURL = components.url else {
+            throw SupabaseServiceError.invalidResponse
+        }
+
+        let callbackURL = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<URL, Error>) in
+            let webSession = ASWebAuthenticationSession(url: authURL, callbackURLScheme: scheme) { url, error in
+                if let error {
+                    continuation.resume(throwing: error)
+                    return
+                }
+                guard let url else {
+                    continuation.resume(throwing: SupabaseServiceError.invalidResponse)
+                    return
+                }
+                continuation.resume(returning: url)
+            }
+            webSession.presentationContextProvider = OAuthPresentationAnchor.shared
+            webSession.prefersEphemeralWebBrowserSession = false
+            if !webSession.start() {
+                continuation.resume(throwing: SupabaseServiceError.requestFailed("Could not start sign-in session"))
+            }
+        }
+
+        guard
+            let parsed = URLComponents(url: callbackURL, resolvingAgainstBaseURL: false),
+            let code = parsed.queryItems?.first(where: { $0.name == "code" })?.value
+        else {
+            throw SupabaseServiceError.requestFailed("OAuth callback missing authorization code")
+        }
+
+        try await exchangePKCE(code: code, codeVerifier: verifier)
+    }
+
+    private func applySession(_ authSession: Session) {
+        sessionToken = authSession.accessToken
+        userId = authSession.user.id
+        if let refresh = authSession.refreshToken {
+            UserDefaults.standard.set(refresh, forKey: Self.refreshTokenStorageKey)
+        }
+    }
+
+    private func refreshAccessToken(using refreshToken: String) async throws {
+        var components = URLComponents(url: configuration.url.appendingPathComponent("auth/v1/token"), resolvingAgainstBaseURL: false)!
+        components.queryItems = [URLQueryItem(name: "grant_type", value: "refresh_token")]
+
+        var request = URLRequest(url: components.url!)
+        request.httpMethod = "POST"
+        request.setValue(configuration.anonKey, forHTTPHeaderField: "apikey")
+        request.setValue("Bearer \(configuration.anonKey)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONEncoder().encode(RefreshTokenBody(refreshToken: refreshToken))
+
+        let authSession = try await send(request, decode: Session.self, acceptedStatusCodes: [200])
+        applySession(authSession)
+    }
+
+    private func exchangePKCE(code: String, codeVerifier: String) async throws {
+        var components = URLComponents(url: configuration.url.appendingPathComponent("auth/v1/token"), resolvingAgainstBaseURL: false)!
+        components.queryItems = [URLQueryItem(name: "grant_type", value: "pkce")]
+
+        var request = URLRequest(url: components.url!)
+        request.httpMethod = "POST"
+        request.setValue(configuration.anonKey, forHTTPHeaderField: "apikey")
+        request.setValue("Bearer \(configuration.anonKey)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONEncoder().encode(PKCEExchangeBody(authCode: code, codeVerifier: codeVerifier))
+
+        let authSession = try await send(request, decode: Session.self, acceptedStatusCodes: [200])
+        applySession(authSession)
+    }
+
+    private static func makePKCEVerifier() -> String {
+        var bytes = [UInt8](repeating: 0, count: 32)
+        let status = SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes)
+        guard status == errSecSuccess else {
+            return UUID().uuidString.replacingOccurrences(of: "-", with: "")
+        }
+        return Data(bytes).base64EncodedString()
+            .replacingOccurrences(of: "+", with: "-")
+            .replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: "=", with: "")
+    }
+
+    private static func makePKCEChallenge(from verifier: String) -> String {
+        let hash = SHA256.hash(data: Data(verifier.utf8))
+        return Data(hash).base64EncodedString()
+            .replacingOccurrences(of: "+", with: "-")
+            .replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: "=", with: "")
+    }
+
+    private struct IdTokenGrantBody: Encodable {
+        let provider: String
+        let idToken: String
+        let nonce: String?
+
+        enum CodingKeys: String, CodingKey {
+            case provider
+            case idToken = "id_token"
+            case nonce
+        }
+    }
+
+    private struct RefreshTokenBody: Encodable {
+        let refreshToken: String
+
+        enum CodingKeys: String, CodingKey {
+            case refreshToken = "refresh_token"
+        }
+    }
+
+    private struct PKCEExchangeBody: Encodable {
+        let authCode: String
+        let codeVerifier: String
+
+        enum CodingKeys: String, CodingKey {
+            case authCode = "auth_code"
+            case codeVerifier = "code_verifier"
+        }
     }
 
     func upsertProfile(reminderTime: String, preferredInterventionStyle: String) async throws {
@@ -568,6 +750,24 @@ final class SupabaseService {
         formatter.dateFormat = "yyyy-MM-dd"
         return formatter
     }()
+}
+
+private final class OAuthPresentationAnchor: NSObject, ASWebAuthenticationPresentationContextProviding {
+    static let shared = OAuthPresentationAnchor()
+
+    func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
+        let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+        if let window = scenes.flatMap(\.windows).first(where: { $0.isKeyWindow }) {
+            return window
+        }
+        if let window = scenes.flatMap(\.windows).first {
+            return window
+        }
+        if let scene = scenes.first {
+            return ASPresentationAnchor(windowScene: scene)
+        }
+        fatalError("No UIWindowScene available for OAuth")
+    }
 }
 
 enum SupabaseServiceError: LocalizedError {

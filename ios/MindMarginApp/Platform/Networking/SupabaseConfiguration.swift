@@ -4,6 +4,13 @@ struct SupabaseConfiguration {
     let url: URL
     let anonKey: String
 
+    /// Must match a URL in Supabase Auth → URL Configuration → Redirect URLs (e.g. `pihacks://auth-callback`).
+    var oauthRedirectURL: String {
+        ProcessInfo.processInfo.environment["SUPABASE_OAUTH_REDIRECT"]
+            ?? Bundle.main.object(forInfoDictionaryKey: "SUPABASE_OAUTH_REDIRECT") as? String
+            ?? "pihacks://auth-callback"
+    }
+
     var isPlaceholder: Bool {
         url.absoluteString.contains("your-project-id.supabase.co") || anonKey == "your-public-anon-key"
     }

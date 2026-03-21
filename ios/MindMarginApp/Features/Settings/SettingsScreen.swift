@@ -16,6 +16,74 @@ struct SettingsScreen: View {
                         .foregroundStyle(MindMarginTheme.textSecondary)
                 }
 
+                if appModel.supabaseService != nil {
+                    SettingsSection(title: "Account") {
+                        VStack(alignment: .leading, spacing: 12) {
+                            Button {
+                                Task { await appModel.signInWithGoogle() }
+                            } label: {
+                                HStack(spacing: 12) {
+                                    ZStack {
+                                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                            .fill(Color.black.opacity(0.06))
+                                            .frame(width: 38, height: 38)
+                                        Image(systemName: "g.circle.fill")
+                                            .font(.subheadline.weight(.semibold))
+                                            .foregroundStyle(Color(hex: 0x4285F4))
+                                    }
+                                    Text("Continue with Google")
+                                        .font(.body.weight(.medium))
+                                        .foregroundStyle(MindMarginTheme.textPrimary)
+                                    Spacer()
+                                    Image(systemName: "chevron.right")
+                                        .font(.caption.weight(.bold))
+                                        .foregroundStyle(MindMarginTheme.textTertiary)
+                                }
+                                .padding(16)
+                                .background(.white, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                                .overlay {
+                                    RoundedRectangle(cornerRadius: 20, style: .continuous)
+                                        .stroke(MindMarginTheme.border, lineWidth: 1)
+                                }
+                            }
+                            .buttonStyle(.plain)
+
+                            if appModel.backendStatus.isConnected {
+                                Button {
+                                    appModel.signOutFromBackend()
+                                } label: {
+                                    HStack(spacing: 12) {
+                                        ZStack {
+                                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                                .fill(MindMarginTheme.red.opacity(0.1))
+                                                .frame(width: 38, height: 38)
+                                            Image(systemName: "rectangle.portrait.and.arrow.right")
+                                                .font(.subheadline.weight(.semibold))
+                                                .foregroundStyle(MindMarginTheme.red)
+                                        }
+                                        Text("Sign out")
+                                            .font(.body.weight(.medium))
+                                            .foregroundStyle(MindMarginTheme.red)
+                                        Spacer()
+                                    }
+                                    .padding(16)
+                                    .background(.white, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                                    .overlay {
+                                        RoundedRectangle(cornerRadius: 20, style: .continuous)
+                                            .stroke(MindMarginTheme.border, lineWidth: 1)
+                                    }
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+
+                        Text("Add pihacks://auth-callback to Supabase Auth redirect URLs. Enable Google in the dashboard. (Sign in with Apple requires a paid Apple Developer Program membership.)")
+                            .font(.caption)
+                            .foregroundStyle(MindMarginTheme.textSecondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+
                 SettingsSection(title: "Data Sources") {
                     SettingsRow(symbolName: "heart.fill", tint: MindMarginTheme.red, label: "Apple Health", value: appModel.isHealthAuthorized ? "Connected" : "Not connected")
                     SettingsRow(symbolName: "calendar", tint: MindMarginTheme.blue, label: "Calendar", value: appModel.isCalendarAuthorized ? "Connected" : "Not connected")
