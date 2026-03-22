@@ -1285,44 +1285,210 @@ final class MindMarginAppModel: ObservableObject {
         from events: [SupabaseService.CalendarEventPayload],
         recommendations: [Recommendation]
     ) -> [ScheduleDisplayBlock] {
-        guard !events.isEmpty else { return [] }
-
-        let relaxationRecommendations = recommendations.filter {
-            ["mindfulness", "movement", "general", "social"].contains($0.category)
+        struct TimedBlock {
+            let block: ScheduleDisplayBlock
+            let startMinute: Int
+            let endMinute: Int
         }
 
-        var blocks: [ScheduleDisplayBlock] = []
+        struct TimeRange {
+            let startMinute: Int
+            let endMinute: Int
+        }
 
-        for (index, event) in events.enumerated() {
-            blocks.append(
-                ScheduleDisplayBlock(
+        let eventRanges = events.compactMap { event -> (event: SupabaseService.CalendarEventPayload, range: TimeRange)? in
+            guard
+                let startMinute = minuteValue(for: event.startTime),
+                let endMinute = minuteValue(for: event.endTime),
+                endMinute > startMinute
+            else {
+                return nil
+            }
+            return (event, TimeRange(startMinute: startMinute, endMinute: endMinute))
+        }
+        .sorted { $0.range.startMinute < $1.range.startMinute }
+
+        var timedBlocks = eventRanges.map { item in
+            TimedBlock(
+                block: ScheduleDisplayBlock(
                     kind: .event,
-                    title: event.title,
-                    subtitle: event.isBackToBack == true ? "Back-to-back commitment" : "Scheduled commitment",
-                    startLabel: event.startTime,
-                    endLabel: event.endTime,
+                    title: item.event.title,
+                    subtitle: item.event.isBackToBack == true ? "Back-to-back commitment" : "Scheduled commitment",
+                    startLabel: formattedTime(from: item.range.startMinute),
+                    endLabel: formattedTime(from: item.range.endMinute),
                     tint: MindMarginTheme.yellow
-                )
-            )
-
-            guard index < events.count - 1 else { continue }
-            guard index < relaxationRecommendations.count else { continue }
-
-            let recommendation = relaxationRecommendations[index]
-            let nextEvent = events[index + 1]
-            blocks.append(
-                ScheduleDisplayBlock(
-                    kind: .recommendation,
-                    title: recommendation.title,
-                    subtitle: recommendation.body,
-                    startLabel: event.endTime,
-                    endLabel: nextEvent.startTime,
-                    tint: MindMarginTheme.green
-                )
+                ),
+                startMinute: item.range.startMinute,
+                endMinute: item.range.endMinute
             )
         }
 
-        return blocks
+        var occupiedRanges = eventRanges.map { (startMinute: $0.range.startMinute, endMinute: $0.range.endMinute) }
+
+        func appendRecommendation(_ recommendation: Recommendation, startMinute: Int, duration: Int) {
+            let endMinute = startMinute + duration
+            guard !hasConflict(start: startMinute, end: endMinute, occupied: occupiedRanges) else { return }
+
+            timedBlocks.append(
+                TimedBlock(
+                    block: ScheduleDisplayBlock(
+                        kind: .recommendation,
+                        title: recommendation.title,
+                        subtitle: recommendation.body,
+                        startLabel: formattedTime(from: startMinute),
+                        endLabel: formattedTime(from: endMinute),
+                        tint: MindMarginTheme.green
+                    ),
+                    startMinute: startMinute,
+                    endMinute: endMinute
+                )
+            )
+            occupiedRanges.append((startMinute: startMinute, endMinute: endMinute))
+        }
+
+        let bedtimeRecommendation = recommendations.first { $0.category == "sleep" || $0.title.localizedCaseInsensitiveContains("bedtime") }
+        let bufferRecommendation = recommendations.first { $0.category == "schedule" || $0.title.localizedCaseInsensitiveContains("buffer") }
+        let walkRecommendation = recommendations.first { $0.category == "movement" || $0.title.localizedCaseInsensitiveContains("walk") }
+        let recoveryRecommendation = recommendations.first { $0.category == "recovery" || $0.title.localizedCaseInsensitiveContains("reset") }
+        let generalRecommendations = recommendations.filter { recommendation in
+            recommendation.id != bedtimeRecommendation?.id
+                && recommendation.id != bufferRecommendation?.id
+                && recommendation.id != walkRecommendation?.id
+                && recommendation.id != recoveryRecommendation?.id
+        }
+
+        if let bufferRecommendation,
+           let startMinute = preferredBufferStart(events: eventRanges.map { (startMinute: $0.range.startMinute, endMinute: $0.range.endMinute) }, occupied: occupiedRanges, duration: 20) {
+            appendRecommendation(bufferRecommendation, startMinute: startMinute, duration: 20)
+        }
+
+        if let walkRecommendation,
+           let startMinute = preferredFreeSlot(
+                occupied: occupiedRanges,
+                preferredStarts: [16 * 60 + 30, 15 * 60 + 30, 14 * 60 + 30],
+                duration: 10,
+                searchRange: 12 * 60...(19 * 60)
+           ) {
+            appendRecommendation(walkRecommendation, startMinute: startMinute, duration: 10)
+        }
+
+        var bedtimeStartMinute: Int?
+        if let bedtimeRecommendation {
+            let lastEventEnd = eventRanges.last?.range.endMinute ?? 20 * 60
+            let proposedStart = lastEventEnd + 30
+            let clampedStart = min(proposedStart, 23 * 60)
+            if !hasConflict(start: clampedStart, end: clampedStart + 30, occupied: occupiedRanges) {
+                appendRecommendation(bedtimeRecommendation, startMinute: clampedStart, duration: 30)
+                bedtimeStartMinute = clampedStart
+            }
+        }
+
+        if let recoveryRecommendation {
+            if let bedtimeStartMinute {
+                let preferredStart = max(0, bedtimeStartMinute - 10)
+                if !hasConflict(start: preferredStart, end: preferredStart + 5, occupied: occupiedRanges) {
+                    appendRecommendation(recoveryRecommendation, startMinute: preferredStart, duration: 5)
+                } else if let fallbackStart = preferredFreeSlot(
+                    occupied: occupiedRanges,
+                    preferredStarts: [20 * 60 + 30, 19 * 60 + 30, 18 * 60 + 30],
+                    duration: 5,
+                    searchRange: 17 * 60...(22 * 60)
+                ) {
+                    appendRecommendation(recoveryRecommendation, startMinute: fallbackStart, duration: 5)
+                }
+            } else if let fallbackStart = preferredFreeSlot(
+                occupied: occupiedRanges,
+                preferredStarts: [20 * 60 + 30, 19 * 60 + 30, 18 * 60 + 30],
+                duration: 5,
+                searchRange: 17 * 60...(22 * 60)
+            ) {
+                appendRecommendation(recoveryRecommendation, startMinute: fallbackStart, duration: 5)
+            }
+        }
+
+        for recommendation in generalRecommendations {
+            if let startMinute = preferredFreeSlot(
+                occupied: occupiedRanges,
+                preferredStarts: [12 * 60, 13 * 60, 11 * 60 + 30],
+                duration: 10,
+                searchRange: 9 * 60...(18 * 60)
+            ) {
+                appendRecommendation(recommendation, startMinute: startMinute, duration: 10)
+            }
+        }
+
+        return timedBlocks
+            .sorted { left, right in
+                if left.startMinute == right.startMinute {
+                    return left.endMinute < right.endMinute
+                }
+                return left.startMinute < right.startMinute
+            }
+            .map(\.block)
+    }
+
+    private static func minuteValue(for label: String) -> Int? {
+        let parts = label.split(separator: ":")
+        guard parts.count == 2, let hour = Int(parts[0]), let minute = Int(parts[1]) else {
+            return nil
+        }
+        return (hour * 60) + minute
+    }
+
+    private static func formattedTime(from minuteValue: Int) -> String {
+        let normalized = max(0, min(minuteValue, (24 * 60) - 1))
+        let hour = normalized / 60
+        let minute = normalized % 60
+        return String(format: "%02d:%02d", hour, minute)
+    }
+
+    private static func hasConflict(
+        start: Int,
+        end: Int,
+        occupied: [(startMinute: Int, endMinute: Int)]
+    ) -> Bool {
+        occupied.contains { range in
+            start < range.endMinute && end > range.startMinute
+        }
+    }
+
+    private static func preferredBufferStart(
+        events: [(startMinute: Int, endMinute: Int)],
+        occupied: [(startMinute: Int, endMinute: Int)],
+        duration: Int
+    ) -> Int? {
+        for pair in zip(events, events.dropFirst()) {
+            let gapStart = pair.0.endMinute
+            let gapEnd = pair.1.startMinute
+            if gapEnd - gapStart >= duration, !hasConflict(start: gapStart, end: gapStart + duration, occupied: occupied) {
+                return gapStart
+            }
+        }
+
+        return nil
+    }
+
+    private static func preferredFreeSlot(
+        occupied: [(startMinute: Int, endMinute: Int)],
+        preferredStarts: [Int],
+        duration: Int,
+        searchRange: ClosedRange<Int>
+    ) -> Int? {
+        for preferredStart in preferredStarts where searchRange.contains(preferredStart) {
+            if !hasConflict(start: preferredStart, end: preferredStart + duration, occupied: occupied) {
+                return preferredStart
+            }
+        }
+
+        var current = searchRange.lowerBound
+        while current + duration <= searchRange.upperBound {
+            if !hasConflict(start: current, end: current + duration, occupied: occupied) {
+                return current
+            }
+            current += 5
+        }
+
+        return nil
     }
 
     private static func makeDashboardFactors(

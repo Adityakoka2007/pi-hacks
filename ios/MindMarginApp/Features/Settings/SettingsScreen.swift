@@ -165,7 +165,7 @@ struct SettingsScreen: View {
                 SettingsSection(title: "Data Sources") {
                     SettingsRow(symbolName: "heart.fill", tint: MindMarginTheme.red, label: "Apple Health", value: appModel.isDemoModeEnabled ? "Simulated" : (appModel.isHealthAuthorized ? "Connected" : "Not connected"))
                     SettingsRow(symbolName: "calendar", tint: MindMarginTheme.blue, label: "Calendar", value: appModel.isDemoModeEnabled ? "Simulated" : (appModel.isCalendarAuthorized ? "Connected" : "Not connected"))
-                    SettingsRow(symbolName: appModel.backendStatus.isConnected ? "link.circle.fill" : "externaldrive.badge.exclamationmark", tint: appModel.backendStatus.isConnected ? MindMarginTheme.green : MindMarginTheme.orange, label: "Supabase", value: appModel.backendStatus.label)
+                    /*SettingsRow(symbolName: appModel.backendStatus.isConnected ? "link.circle.fill" : "externaldrive.badge.exclamationmark", tint: appModel.backendStatus.isConnected ? MindMarginTheme.green : MindMarginTheme.orange, label: "Supabase", value: appModel.backendStatus.label)*/
                 }
 
                 SettingsSection(title: "Preferences") {
