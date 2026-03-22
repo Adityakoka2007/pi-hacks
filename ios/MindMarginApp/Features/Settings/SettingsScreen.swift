@@ -192,10 +192,10 @@ struct SettingsScreen: View {
                                     .foregroundStyle(MindMarginTheme.textPrimary)
                             }
 
-                            Text(appModel.backendStatus.detail)
+                            /*Text(appModel.backendStatus.detail)
                                 .font(.subheadline)
                                 .foregroundStyle(MindMarginTheme.textSecondary)
-                                .fixedSize(horizontal: false, vertical: true)
+                                .fixedSize(horizontal: false, vertical: true)*/
                         }
                     }
 
