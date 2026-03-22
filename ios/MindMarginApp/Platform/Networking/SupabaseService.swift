@@ -141,7 +141,7 @@ final class SupabaseService {
 
     private struct HealthSummaryPayload: Encodable {
         let summaryDate: String
-        let sleepHours: Double
+        let sleepHours: Double?
         let steps: Int
         let restingHeartRate: Double?
         let heartRateVariability: Double?
@@ -218,7 +218,7 @@ final class SupabaseService {
     private struct HealthSummaryRow: Decodable {
         let id: UUID
         let summaryDate: String
-        let sleepHours: Double
+        let sleepHours: Double?
         let steps: Int
         let restingHeartRate: Double?
         let heartRateVariability: Double?
@@ -338,6 +338,16 @@ final class SupabaseService {
         guard let http = response as? HTTPURLResponse else {
             throw SupabaseServiceError.invalidResponse
         }
+
+        if http.statusCode == 422 || http.statusCode == 400 {
+            let body = String(data: data, encoding: .utf8) ?? ""
+            if body.lowercased().contains("already") || body.lowercased().contains("registered") {
+                try await signIn(email: email, password: password)
+                return
+            }
+            throw SupabaseServiceError.requestFailed(body)
+        }
+
         guard [200, 201].contains(http.statusCode) else {
             let body = String(data: data, encoding: .utf8) ?? "unknown"
             throw SupabaseServiceError.requestFailed(body)

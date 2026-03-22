@@ -100,6 +100,7 @@ final class MindMarginAppModel: ObservableObject {
         enum Impact {
             case high
             case moderate
+            case low
 
             var label: String {
                 switch self {
@@ -107,6 +108,8 @@ final class MindMarginAppModel: ObservableObject {
                     return "high"
                 case .moderate:
                     return "moderate"
+                case .low:
+                    return "low"
                 }
             }
         }
@@ -281,7 +284,7 @@ final class MindMarginAppModel: ObservableObject {
             return InsightPoint(
                 date: health.date,
                 label: shortWeekdayLabel(for: health.date),
-                primary: health.sleepHours,
+                primary: health.sleepHours ?? 0,
                 secondary: stress.map { Double($0.stressLevel) }
             )
         }
@@ -312,14 +315,14 @@ final class MindMarginAppModel: ObservableObject {
 
     var averageSleepLabel: String {
         guard !healthHistory.isEmpty else { return "--" }
-        let average = healthHistory.suffix(7).map(\.sleepHours).averageDouble
+        let average = healthHistory.suffix(7).compactMap(\.sleepHours).averageDouble
         return "\(average.formatted(.number.precision(.fractionLength(1))))h"
     }
 
     var averageSleepChangeLabel: String {
         percentageChangeLabel(
-            current: healthHistory.suffix(7).map(\.sleepHours).averageDouble,
-            previous: Array(healthHistory.dropLast(min(7, healthHistory.count)).suffix(7)).map(\.sleepHours).averageDouble,
+            current: healthHistory.suffix(7).compactMap(\.sleepHours).averageDouble,
+            previous: Array(healthHistory.dropLast(min(7, healthHistory.count)).suffix(7)).compactMap(\.sleepHours).averageDouble,
             positiveIsGood: true
         )
     }
@@ -432,6 +435,18 @@ final class MindMarginAppModel: ObservableObject {
         } catch {
             backendStatus = .localOnly("Could not load existing data: \(error.localizedDescription)")
         }
+    }
+
+    func reloadFromDatabase() async {
+        guard !isRefreshingForecast else { return }
+        guard let supabaseService, supabaseService.isAuthenticated else {
+            errorMessage = "Not connected to Supabase."
+            return
+        }
+        isRefreshingForecast = true
+        errorMessage = nil
+        await loadExistingDataFromBackend(supabaseService)
+        isRefreshingForecast = false
     }
 
     func advanceFromWelcome() {
@@ -679,15 +694,28 @@ final class MindMarginAppModel: ObservableObject {
         isRefreshingForecast = true
         errorMessage = nil
 
+        let healthState = await healthKitClient.authorizationState()
+        let calendarState = calendarClient.authorizationState()
+        print("[MindMargin] refreshForecast — healthAuth=\(healthState) calendarAuth=\(calendarState) permissionsReady=\(permissionsReady)")
+
         if permissionsReady {
             do {
                 healthSummary = try await healthKitClient.fetchLatestSummary()
-                scheduleSummary = try await calendarClient.fetchTomorrowSummary()
                 append(healthSummary)
-                append(scheduleSummary)
+                print("[MindMargin] HealthKit → sleep=\(String(describing: healthSummary.sleepHours))h steps=\(healthSummary.steps) rhr=\(String(describing: healthSummary.restingHeartRate)) hrv=\(String(describing: healthSummary.heartRateVariability))")
             } catch {
-                errorMessage = error.localizedDescription
+                print("[MindMargin] HealthKit fetch failed: \(error.localizedDescription)")
             }
+
+            do {
+                scheduleSummary = try await calendarClient.fetchTomorrowSummary()
+                append(scheduleSummary)
+                print("[MindMargin] Calendar → events=\(scheduleSummary.eventCount) busyHours=\(scheduleSummary.busyHours) b2b=\(scheduleSummary.backToBackCount) lateNight=\(scheduleSummary.lateNightEvents)")
+            } catch {
+                print("[MindMargin] Calendar fetch failed: \(error.localizedDescription)")
+            }
+        } else {
+            print("[MindMargin] Skipping local fetch — permissions not ready")
         }
 
         let features = makeFeatures(from: healthSummary, schedule: scheduleSummary)
@@ -703,8 +731,18 @@ final class MindMarginAppModel: ObservableObject {
 
                 if supabaseService.isAuthenticated {
                     if permissionsReady {
-                        try? await supabaseService.syncHealthSummary(healthSummary)
-                        try? await supabaseService.syncScheduleSummary(scheduleSummary)
+                        do {
+                            try await supabaseService.syncHealthSummary(healthSummary)
+                            print("[MindMargin] Health synced to Supabase")
+                        } catch {
+                            print("[MindMargin] Health sync failed: \(error.localizedDescription)")
+                        }
+                        do {
+                            try await supabaseService.syncScheduleSummary(scheduleSummary)
+                            print("[MindMargin] Schedule synced to Supabase")
+                        } catch {
+                            print("[MindMargin] Schedule sync failed: \(error.localizedDescription)")
+                        }
                     }
 
                     var events: [SupabaseService.CalendarEventPayload] = []
@@ -805,8 +843,8 @@ final class MindMarginAppModel: ObservableObject {
             .map(\.stressLevel)
             .average
 
-        let sleepDebtHours = max(0, 7.8 - health.sleepHours)
-        let sleepRegularityScore = min(max(health.sleepHours / 8.0, 0.35), 0.95)
+        let sleepDebtHours = health.sleepHours.map { max(0, 7.8 - $0) } ?? 0
+        let sleepRegularityScore = health.sleepHours.map { min(max($0 / 8.0, 0.35), 0.95) } ?? 0.5
         let activityTrendScore = min(max(Double(health.steps) / 9_000.0, 0.2), 1.0)
         let scheduleIntensityScore = min(
             (Double(schedule.eventCount) * 0.08)
@@ -885,7 +923,7 @@ final class MindMarginAppModel: ObservableObject {
             DashboardFactor(
                 symbolName: "moon.zzz.fill",
                 title: "Sleep load",
-                value: factorScores.sleep?.rawHours.map { "\($0.formatted(.number.precision(.fractionLength(1))))h sleep" } ?? "\(health.sleepHours.formatted(.number.precision(.fractionLength(1))))h sleep",
+                value: factorScores.sleep?.rawHours.map { "\($0.formatted(.number.precision(.fractionLength(1))))h sleep" } ?? health.sleepHours.map { "\($0.formatted(.number.precision(.fractionLength(1))))h sleep" } ?? "Not available",
                 tint: MindMarginTheme.red,
                 impact: (factorScores.sleep?.score ?? 0) >= 1.4 ? .high : .moderate
             ),
@@ -918,7 +956,10 @@ final class MindMarginAppModel: ObservableObject {
             DashboardFactor(
                 symbolName: "moon.zzz.fill",
                 title: "Sleep debt",
-                value: "\(max(Int(round(7.8 - health.sleepHours)), 1)) nights",
+                value: {
+                    guard let sleep = health.sleepHours else { return "Not available" }
+                    return sleep >= 7.8 ? "None" : "\(max(0.1, 7.8 - sleep).formatted(.number.precision(.fractionLength(1))))h below baseline"
+                }(),
                 tint: MindMarginTheme.red,
                 impact: .high
             ),
@@ -938,10 +979,10 @@ final class MindMarginAppModel: ObservableObject {
             ),
             DashboardFactor(
                 symbolName: "heart.fill",
-                title: "Elevated HR",
-                value: "\(Int(health.restingHeartRate ?? 70)) bpm",
+                title: "Resting HR",
+                value: health.restingHeartRate.map { "\(Int($0)) bpm" } ?? "Not available",
                 tint: MindMarginTheme.orange,
-                impact: .moderate
+                impact: health.restingHeartRate != nil ? .moderate : .low
             ),
         ]
     }
@@ -955,7 +996,11 @@ final class MindMarginAppModel: ObservableObject {
             return "\(Int(restingHR)) bpm"
         }
 
-        return "\(Int(health.restingHeartRate ?? 70)) bpm"
+        if let restingHR = health.restingHeartRate {
+            return "\(Int(restingHR)) bpm"
+        }
+
+        return "Not available"
     }
 
     private func percentageChangeLabel(current: Double, previous: Double, positiveIsGood: Bool) -> String {

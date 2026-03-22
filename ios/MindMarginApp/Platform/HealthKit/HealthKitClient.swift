@@ -83,22 +83,22 @@ final class HealthKitClient {
         let sleepWindowEnd = calendar.date(byAdding: .hour, value: 12, to: startOfToday) ?? now
         let rollingDayStart = calendar.date(byAdding: .day, value: -1, to: now) ?? now.addingTimeInterval(-86_400)
 
-        async let sleepHours = fetchSleepHours(from: sleepWindowStart, to: sleepWindowEnd)
-        async let steps = fetchCumulativeQuantity(.stepCount, from: startOfToday, to: now, unit: .count())
-        async let restingHeartRate = fetchAverageQuantity(.restingHeartRate, from: rollingDayStart, to: now, unit: HKUnit.count().unitDivided(by: .minute()))
-        async let hrv = fetchAverageQuantity(.heartRateVariabilitySDNN, from: rollingDayStart, to: now, unit: .secondUnit(with: .milli))
+        let sleepHours: Double? = try? await fetchSleepHours(from: sleepWindowStart, to: sleepWindowEnd)
+        let steps = (try? await fetchCumulativeQuantity(.stepCount, from: startOfToday, to: now, unit: .count())) ?? 0
+        let restingHeartRate = try? await fetchAverageQuantity(.restingHeartRate, from: rollingDayStart, to: now, unit: HKUnit.count().unitDivided(by: .minute()))
+        let hrv = try? await fetchAverageQuantity(.heartRateVariabilitySDNN, from: rollingDayStart, to: now, unit: .secondUnit(with: .milli))
 
         return DailyHealthSummary(
             id: UUID(),
             date: now,
-            sleepHours: try await sleepHours,
-            steps: Int((try await steps).rounded()),
-            restingHeartRate: try await restingHeartRate,
-            heartRateVariability: try await hrv
+            sleepHours: sleepHours,
+            steps: Int(steps.rounded()),
+            restingHeartRate: restingHeartRate,
+            heartRateVariability: hrv
         )
     }
 
-    private func fetchSleepHours(from startDate: Date, to endDate: Date) async throws -> Double {
+    private func fetchSleepHours(from startDate: Date, to endDate: Date) async throws -> Double? {
         guard let sleepType = HKObjectType.categoryType(forIdentifier: .sleepAnalysis) else {
             throw PlatformDataError.healthDataUnavailable
         }
@@ -115,13 +115,19 @@ final class HealthKitClient {
             healthStore.execute(query)
         }
 
-        let totalSeconds = samples
+        let sleepSamples = samples
             .filter { sample in
                 if #available(iOS 16.0, *) {
                     return sample.value != HKCategoryValueSleepAnalysis.awake.rawValue
                 }
-                return sample.value == HKCategoryValueSleepAnalysis.asleepUnspecified.rawValue
+                let v = sample.value
+                return v == HKCategoryValueSleepAnalysis.asleepUnspecified.rawValue
+                    || v == HKCategoryValueSleepAnalysis.inBed.rawValue
             }
+
+        guard !sleepSamples.isEmpty else { return nil }
+
+        let totalSeconds = sleepSamples
             .reduce(0.0) { partialResult, sample in
                 partialResult + sample.endDate.timeIntervalSince(sample.startDate)
             }

@@ -84,12 +84,6 @@ private struct WelcomeScreen: View {
                 VStack(spacing: 14) {
                     MindMarginPrimaryButton(title: "Get Started", action: appModel.advanceFromWelcome)
 
-                    Button("How it works") {
-                        appModel.advanceFromWelcome()
-                    }
-                    .buttonStyle(.plain)
-                    .font(.headline)
-                    .foregroundStyle(.white.opacity(0.92))
                 }
                 .padding(.horizontal, 24)
                 .padding(.bottom, 28)

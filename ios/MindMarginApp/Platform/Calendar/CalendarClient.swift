@@ -45,8 +45,7 @@ final class CalendarClient {
             throw PlatformDataError.calendarAuthorizationMissing
         }
 
-        let events = try await fetchEventsForTomorrow()
-        let tomorrow = tomorrowStartDate
+        let events = try await fetchEventsForTargetDay()
 
         let busyHours = events.reduce(0.0) { partialResult, event in
             partialResult + event.endDate.timeIntervalSince(event.startDate) / 3_600
@@ -58,7 +57,7 @@ final class CalendarClient {
 
         return DailyScheduleSummary(
             id: UUID(),
-            date: tomorrow,
+            date: targetDayStart,
             eventCount: events.count,
             busyHours: busyHours,
             backToBackCount: backToBackCount,
@@ -71,7 +70,7 @@ final class CalendarClient {
             throw PlatformDataError.calendarAuthorizationMissing
         }
 
-        let events = try await fetchEventsForTomorrow()
+        let events = try await fetchEventsForTargetDay()
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.dateFormat = "HH:mm"
@@ -89,13 +88,19 @@ final class CalendarClient {
         }
     }
 
-    private var tomorrowStartDate: Date {
-        let startOfToday = calendar.startOfDay(for: .now)
-        return calendar.date(byAdding: .day, value: 1, to: startOfToday) ?? startOfToday.addingTimeInterval(86_400)
+    /// Use today if it's before 9 PM, otherwise look at tomorrow.
+    private var targetDayStart: Date {
+        let now = Date()
+        let hour = calendar.component(.hour, from: now)
+        let startOfToday = calendar.startOfDay(for: now)
+        if hour >= 21 {
+            return calendar.date(byAdding: .day, value: 1, to: startOfToday) ?? startOfToday.addingTimeInterval(86_400)
+        }
+        return startOfToday
     }
 
-    private func fetchEventsForTomorrow() async throws -> [EKEvent] {
-        let start = tomorrowStartDate
+    private func fetchEventsForTargetDay() async throws -> [EKEvent] {
+        let start = targetDayStart
         let end = calendar.date(byAdding: .day, value: 1, to: start) ?? start.addingTimeInterval(86_400)
         let predicate = eventStore.predicateForEvents(withStart: start, end: end, calendars: nil)
 

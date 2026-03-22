@@ -21,7 +21,7 @@ struct DashboardScreen: View {
 
                     Button {
                         Task {
-                            await appModel.refreshForecast()
+                            await appModel.reloadFromDatabase()
                         }
                     } label: {
                         HStack(spacing: 6) {
@@ -221,10 +221,10 @@ struct DashboardScreen: View {
 
             Text(factor.impact.label)
                 .font(.caption.weight(.semibold))
-                .foregroundStyle(factor.impact == .high ? MindMarginTheme.red : MindMarginTheme.yellow)
+                .foregroundStyle(factor.impact == .high ? MindMarginTheme.red : factor.impact == .low ? .secondary : MindMarginTheme.yellow)
                 .padding(.horizontal, 10)
                 .padding(.vertical, 6)
-                .background((factor.impact == .high ? MindMarginTheme.highRiskBackground : MindMarginTheme.moderateRiskBackground), in: Capsule())
+                .background((factor.impact == .high ? MindMarginTheme.highRiskBackground : factor.impact == .low ? Color(.systemGray5) : MindMarginTheme.moderateRiskBackground), in: Capsule())
         }
         .padding(16)
         .background(.white, in: RoundedRectangle(cornerRadius: 20, style: .continuous))

@@ -3,7 +3,7 @@ import Foundation
 struct DailyHealthSummary: Codable, Identifiable {
     let id: UUID
     let date: Date
-    let sleepHours: Double
+    let sleepHours: Double?
     let steps: Int
     let restingHeartRate: Double?
     let heartRateVariability: Double?
@@ -13,7 +13,7 @@ extension DailyHealthSummary {
     static let empty = DailyHealthSummary(
         id: UUID(),
         date: .now,
-        sleepHours: 0,
+        sleepHours: nil,
         steps: 0,
         restingHeartRate: nil,
         heartRateVariability: nil
