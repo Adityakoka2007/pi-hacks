@@ -130,6 +130,22 @@ final class MindMarginAppModel: ObservableObject {
         let secondary: Double?
     }
 
+
+    struct ScheduleDisplayBlock: Identifiable {
+        enum Kind {
+            case event
+            case recommendation
+        }
+
+        let id = UUID()
+        let kind: Kind
+        let title: String
+        let subtitle: String
+        let startLabel: String
+        let endLabel: String
+        let tint: Color
+    }
+
     @Published var onboardingStep: OnboardingStep = .welcome
     @Published var selectedTab: AppTab = .dashboard
     @Published var navigationPath: [Route] = []
@@ -159,6 +175,7 @@ final class MindMarginAppModel: ObservableObject {
     @Published private(set) var healthHistory: [DailyHealthSummary] = []
     @Published private(set) var scheduleHistory: [DailyScheduleSummary] = []
     @Published private(set) var dashboardFactors: [DashboardFactor] = []
+    @Published private(set) var scheduleDisplayBlocks: [ScheduleDisplayBlock] = []
     @Published private(set) var recommendationFeedbackDraftByID: [UUID: RecommendationFeedback] = [:]
     @Published private(set) var submittedRecommendationFeedbackByID: [UUID: RecommendationFeedback] = [:]
     @Published private(set) var backendStatus: BackendStatus = .notConfigured
@@ -410,6 +427,7 @@ final class MindMarginAppModel: ObservableObject {
             }
 
             dashboardFactors = Self.makeFallbackFactors(from: healthSummary, schedule: scheduleSummary)
+            scheduleDisplayBlocks = []
 
             do {
                 let targetDate = scheduleSummary.date
@@ -421,6 +439,10 @@ final class MindMarginAppModel: ObservableObject {
                 if !analysis.recommendations.isEmpty {
                     recommendations = analysis.recommendations
                 }
+                scheduleDisplayBlocks = Self.makeScheduleDisplayBlocks(
+                    from: [],
+                    recommendations: recommendations
+                )
                 if let fs = analysis.factorScores {
                     dashboardFactors = Self.makeDashboardFactors(
                         from: fs,
@@ -757,6 +779,7 @@ final class MindMarginAppModel: ObservableObject {
             recommendations = recommendationService.recommendations(for: localPrediction, features: features)
         }
         dashboardFactors = Self.makeFallbackFactors(from: healthSummary, schedule: scheduleSummary)
+        scheduleDisplayBlocks = []
 
         if let supabaseService {
             do {
@@ -782,6 +805,10 @@ final class MindMarginAppModel: ObservableObject {
                     if permissionsReady {
                         events = (try? await calendarClient.fetchTomorrowEvents()) ?? []
                     }
+                    scheduleDisplayBlocks = Self.makeScheduleDisplayBlocks(
+                        from: events,
+                        recommendations: recommendations
+                    )
 
                     let analysis = try await supabaseService.analyzeStress(
                         for: scheduleSummary.date,
@@ -793,6 +820,10 @@ final class MindMarginAppModel: ObservableObject {
                     if !analysis.recommendations.isEmpty {
                         recommendations = analysis.recommendations
                     }
+                    scheduleDisplayBlocks = Self.makeScheduleDisplayBlocks(
+                        from: events,
+                        recommendations: recommendations
+                    )
                     if let fs = analysis.factorScores {
                         dashboardFactors = Self.makeDashboardFactors(
                             from: fs,
@@ -957,6 +988,50 @@ final class MindMarginAppModel: ObservableObject {
         default:
             return nil
         }
+    }
+
+    private static func makeScheduleDisplayBlocks(
+        from events: [SupabaseService.CalendarEventPayload],
+        recommendations: [Recommendation]
+    ) -> [ScheduleDisplayBlock] {
+        guard !events.isEmpty else { return [] }
+
+        let relaxationRecommendations = recommendations.filter {
+            ["mindfulness", "movement", "general", "social"].contains($0.category)
+        }
+
+        var blocks: [ScheduleDisplayBlock] = []
+
+        for (index, event) in events.enumerated() {
+            blocks.append(
+                ScheduleDisplayBlock(
+                    kind: .event,
+                    title: event.title,
+                    subtitle: event.isBackToBack == true ? "Back-to-back commitment" : "Scheduled commitment",
+                    startLabel: event.startTime,
+                    endLabel: event.endTime,
+                    tint: MindMarginTheme.yellow
+                )
+            )
+
+            guard index < events.count - 1 else { continue }
+            guard index < relaxationRecommendations.count else { continue }
+
+            let recommendation = relaxationRecommendations[index]
+            let nextEvent = events[index + 1]
+            blocks.append(
+                ScheduleDisplayBlock(
+                    kind: .recommendation,
+                    title: recommendation.title,
+                    subtitle: recommendation.body,
+                    startLabel: event.endTime,
+                    endLabel: nextEvent.startTime,
+                    tint: MindMarginTheme.green
+                )
+            )
+        }
+
+        return blocks
     }
 
     private static func makeDashboardFactors(
