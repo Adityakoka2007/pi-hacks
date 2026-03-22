@@ -123,35 +123,6 @@ struct DashboardScreen: View {
         }
     }
 
-    private var statusCard: some View {
-        MindMarginCard(padding: 18) {
-            HStack(alignment: .top, spacing: 12) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .fill(statusTint.opacity(0.12))
-                        .frame(width: 40, height: 40)
-
-                    Image(systemName: statusSymbolName)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(statusTint)
-                }
-
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(appModel.backendStatus.label)
-                        .font(.headline)
-                        .foregroundStyle(MindMarginTheme.textPrimary)
-
-                    Text(appModel.backendStatus.detail)
-                        .font(.subheadline)
-                        .foregroundStyle(MindMarginTheme.textSecondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-
-                Spacer()
-            }
-        }
-    }
-
     private var riskTint: Color {
         switch appModel.prediction.riskLevel {
         case .low:
@@ -160,40 +131,6 @@ struct DashboardScreen: View {
             return MindMarginTheme.yellow
         case .high:
             return MindMarginTheme.red
-        }
-    }
-
-    private var statusTint: Color {
-        if appModel.backendStatus.isConnected {
-            return MindMarginTheme.green
-        }
-
-        switch appModel.backendStatus {
-        case .connecting:
-            return MindMarginTheme.indigo
-        case .notConfigured:
-            return MindMarginTheme.orange
-        case .localOnly:
-            return MindMarginTheme.orange
-        case .connected:
-            return MindMarginTheme.green
-        }
-    }
-
-    private var statusSymbolName: String {
-        if appModel.backendStatus.isConnected {
-            return "link.circle.fill"
-        }
-
-        switch appModel.backendStatus {
-        case .connecting:
-            return "arrow.triangle.2.circlepath.circle.fill"
-        case .notConfigured:
-            return "externaldrive.badge.exclamationmark"
-        case .localOnly:
-            return "wifi.slash"
-        case .connected:
-            return "link.circle.fill"
         }
     }
 
@@ -312,37 +249,7 @@ struct DashboardScreen: View {
         .background(block.tint.opacity(0.06), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 
-    private func errorCard(_ message: String) -> some View {
-        MindMarginCard(padding: 16) {
-            HStack(alignment: .top, spacing: 12) {
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .font(.headline)
-                    .foregroundStyle(MindMarginTheme.red)
-
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Sync issue")
-                        .font(.headline)
-                        .foregroundStyle(MindMarginTheme.textPrimary)
-
-                    Text(message)
-                        .font(.subheadline)
-                        .foregroundStyle(MindMarginTheme.textSecondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-
-                Spacer()
-
-                Button {
-                    appModel.dismissError()
-                } label: {
-                    Image(systemName: "xmark")
-                        .font(.caption.weight(.bold))
-                        .foregroundStyle(MindMarginTheme.textTertiary)
-                }
-                .buttonStyle(.plain)
-            }
-        }
-    }
+    
 }
 
 struct ActionPlanScreen: View {

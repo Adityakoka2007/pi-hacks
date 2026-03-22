@@ -326,9 +326,6 @@ final class MindMarginAppModel: ObservableObject {
     private static let demoModeEnabledKey = "mindmargin.demoModeEnabled"
     private static let demoScenarioKey = "mindmargin.demoScenario"
 
-    private static let demoModeEnabledKey = "mindmargin.demoModeEnabled"
-    private static let demoScenarioKey = "mindmargin.demoScenario"
-
     init() {
         let defaults = UserDefaults.standard
         self.isDemoModeEnabled = defaults.bool(forKey: Self.demoModeEnabledKey)
@@ -634,12 +631,17 @@ final class MindMarginAppModel: ObservableObject {
     func signUpWithEmail(name: String, email: String, password: String) {
         Task {
             guard let supabaseService else {
-                errorMessage = "Supabase is not configured. Add SUPABASE_URL and SUPABASE_ANON_KEY."
                 return
             }
 
             isAuthenticating = true
             errorMessage = nil
+
+            guard isValidEmail(email) else {
+                errorMessage = "Enter a valid email address."
+                isAuthenticating = false
+                return
+            }
 
             do {
                 try await supabaseService.signUp(email: email, password: password)
@@ -662,8 +664,12 @@ final class MindMarginAppModel: ObservableObject {
                 await StressNotificationManager.shared.syncPendingDeviceTokenIfPossible(using: supabaseService)
                 onboardingStep = .copingQuiz
             } catch {
-                backendStatus = .localOnly("Account creation failed: \(error.localizedDescription)")
-                errorMessage = error.localizedDescription
+                let message = (error as? SupabaseServiceError)?.errorDescription ?? error.localizedDescription
+                if message.contains("email_exists") || message.localizedCaseInsensitiveContains("already") || message.localizedCaseInsensitiveContains("registered") {
+                    errorMessage = "An account with this email already exists. Log in instead."
+                } else {
+                    errorMessage = nil
+                }
             }
 
             isAuthenticating = false
@@ -673,12 +679,17 @@ final class MindMarginAppModel: ObservableObject {
     func signInWithEmail(email: String, password: String) {
         Task {
             guard let supabaseService else {
-                errorMessage = "Supabase is not configured. Add SUPABASE_URL and SUPABASE_ANON_KEY."
                 return
             }
 
             isAuthenticating = true
             errorMessage = nil
+
+            guard isValidEmail(email) else {
+                errorMessage = "Enter a valid email address."
+                isAuthenticating = false
+                return
+            }
 
             do {
                 try await supabaseService.signIn(email: email, password: password)
@@ -692,8 +703,7 @@ final class MindMarginAppModel: ObservableObject {
                     await syncProfilePreferences()
                 }
             } catch {
-                backendStatus = .localOnly("Log in failed: \(error.localizedDescription)")
-                errorMessage = error.localizedDescription
+                errorMessage = "Invalid email or password."
             }
 
             isAuthenticating = false
@@ -1149,6 +1159,13 @@ final class MindMarginAppModel: ObservableObject {
         }
     }
 
+    private func isValidEmail(_ email: String) -> Bool {
+        let trimmed = email.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, !trimmed.contains(" ") else { return false }
+        let pattern = #"^[^@\s]+@[^@\s]+\.[^@\s]+$"#
+        return trimmed.range(of: pattern, options: .regularExpression) != nil
+    }
+
     private func makeFeatures(from health: DailyHealthSummary, schedule: DailyScheduleSummary) -> StressFeatures {
         let recentAverage = checkInHistory
             .suffix(5)
@@ -1219,157 +1236,6 @@ final class MindMarginAppModel: ObservableObject {
             return schedule.date
         default:
             return nil
-        }
-    }
-
-    private static func makeDemoScenarioSnapshot(for scenario: DemoScenario) -> DemoScenarioSnapshot {
-        let calendar = Calendar.current
-        let startOfToday = calendar.startOfDay(for: .now)
-        let targetDate = calendar.date(byAdding: .day, value: 1, to: startOfToday) ?? startOfToday.addingTimeInterval(86_400)
-
-        func day(_ offset: Int) -> Date {
-            calendar.date(byAdding: .day, value: offset, to: startOfToday) ?? startOfToday
-        }
-
-        func health(offset: Int, sleep: Double, steps: Int, restingHR: Double, hrv: Double) -> DailyHealthSummary {
-            DailyHealthSummary(
-                id: UUID(),
-                date: day(offset),
-                sleepHours: sleep,
-                steps: steps,
-                restingHeartRate: restingHR,
-                heartRateVariability: hrv
-            )
-        }
-
-        func schedule(date: Date, eventCount: Int, busyHours: Double, backToBackCount: Int, lateNightEvents: Int) -> DailyScheduleSummary {
-            DailyScheduleSummary(
-                id: UUID(),
-                date: date,
-                eventCount: eventCount,
-                busyHours: busyHours,
-                backToBackCount: backToBackCount,
-                lateNightEvents: lateNightEvents
-            )
-        }
-
-        func checkIn(offset: Int, stressLevel: Int, energyLevel: Int, caffeineServings: Int, notes: String) -> StressCheckIn {
-            StressCheckIn(
-                id: UUID(),
-                date: day(offset),
-                stressLevel: stressLevel,
-                energyLevel: energyLevel,
-                caffeineServings: caffeineServings,
-                helpfulYesterday: nil,
-                notes: notes
-            )
-        }
-
-        switch scenario {
-        case .calmDay:
-            let healthHistory = [
-                health(offset: -4, sleep: 7.9, steps: 8200, restingHR: 62, hrv: 53),
-                health(offset: -3, sleep: 8.2, steps: 9600, restingHR: 60, hrv: 55),
-                health(offset: -2, sleep: 7.8, steps: 8700, restingHR: 61, hrv: 56),
-                health(offset: -1, sleep: 8.0, steps: 9100, restingHR: 60, hrv: 58),
-                health(offset: 0, sleep: 8.1, steps: 9800, restingHR: 59, hrv: 57),
-            ]
-            let scheduleHistory = [
-                schedule(date: day(-4), eventCount: 2, busyHours: 2.0, backToBackCount: 0, lateNightEvents: 0),
-                schedule(date: day(-3), eventCount: 3, busyHours: 2.5, backToBackCount: 0, lateNightEvents: 0),
-                schedule(date: day(-2), eventCount: 2, busyHours: 1.5, backToBackCount: 0, lateNightEvents: 0),
-                schedule(date: day(-1), eventCount: 3, busyHours: 3.0, backToBackCount: 1, lateNightEvents: 0),
-                schedule(date: targetDate, eventCount: 2, busyHours: 2.5, backToBackCount: 0, lateNightEvents: 0),
-            ]
-            let events = [
-                SupabaseService.CalendarEventPayload(title: "Design seminar", startTime: "10:00", endTime: "11:00", isBackToBack: false),
-                SupabaseService.CalendarEventPayload(title: "Lunch with mentor", startTime: "14:00", endTime: "15:30", isBackToBack: false),
-            ]
-            return DemoScenarioSnapshot(
-                healthSummary: healthHistory.last!,
-                scheduleSummary: scheduleHistory.last!,
-                calendarEvents: events,
-                checkIns: [
-                    checkIn(offset: -2, stressLevel: 2, energyLevel: 4, caffeineServings: 1, notes: "Pretty steady day."),
-                    checkIn(offset: -1, stressLevel: 2, energyLevel: 4, caffeineServings: 1, notes: "Had room to reset."),
-                    checkIn(offset: 0, stressLevel: 2, energyLevel: 5, caffeineServings: 1, notes: "Feeling rested."),
-                ],
-                healthHistory: healthHistory,
-                scheduleHistory: scheduleHistory
-            )
-
-        case .packedDay:
-            let healthHistory = [
-                health(offset: -4, sleep: 7.0, steps: 6100, restingHR: 69, hrv: 44),
-                health(offset: -3, sleep: 6.7, steps: 5200, restingHR: 70, hrv: 41),
-                health(offset: -2, sleep: 6.5, steps: 4800, restingHR: 72, hrv: 39),
-                health(offset: -1, sleep: 6.3, steps: 4500, restingHR: 74, hrv: 37),
-                health(offset: 0, sleep: 6.1, steps: 4300, restingHR: 75, hrv: 35),
-            ]
-            let scheduleHistory = [
-                schedule(date: day(-4), eventCount: 4, busyHours: 4.5, backToBackCount: 2, lateNightEvents: 0),
-                schedule(date: day(-3), eventCount: 5, busyHours: 5.0, backToBackCount: 2, lateNightEvents: 0),
-                schedule(date: day(-2), eventCount: 5, busyHours: 5.5, backToBackCount: 3, lateNightEvents: 1),
-                schedule(date: day(-1), eventCount: 6, busyHours: 6.0, backToBackCount: 3, lateNightEvents: 1),
-                schedule(date: targetDate, eventCount: 6, busyHours: 6.5, backToBackCount: 3, lateNightEvents: 1),
-            ]
-            let events = [
-                SupabaseService.CalendarEventPayload(title: "Biochem lecture", startTime: "09:00", endTime: "10:00", isBackToBack: false),
-                SupabaseService.CalendarEventPayload(title: "Study group", startTime: "10:05", endTime: "11:00", isBackToBack: true),
-                SupabaseService.CalendarEventPayload(title: "Office hours", startTime: "11:10", endTime: "12:00", isBackToBack: true),
-                SupabaseService.CalendarEventPayload(title: "Lab", startTime: "13:00", endTime: "14:30", isBackToBack: false),
-                SupabaseService.CalendarEventPayload(title: "Project meeting", startTime: "15:00", endTime: "16:00", isBackToBack: false),
-                SupabaseService.CalendarEventPayload(title: "Club event", startTime: "20:30", endTime: "21:30", isBackToBack: false),
-            ]
-            return DemoScenarioSnapshot(
-                healthSummary: healthHistory.last!,
-                scheduleSummary: scheduleHistory.last!,
-                calendarEvents: events,
-                checkIns: [
-                    checkIn(offset: -2, stressLevel: 3, energyLevel: 3, caffeineServings: 2, notes: "A little overloaded."),
-                    checkIn(offset: -1, stressLevel: 4, energyLevel: 2, caffeineServings: 2, notes: "Back-to-back classes were a lot."),
-                    checkIn(offset: 0, stressLevel: 4, energyLevel: 2, caffeineServings: 3, notes: "Need better breaks tomorrow."),
-                ],
-                healthHistory: healthHistory,
-                scheduleHistory: scheduleHistory
-            )
-
-        case .examWeek:
-            let healthHistory = [
-                health(offset: -4, sleep: 6.0, steps: 3500, restingHR: 77, hrv: 34),
-                health(offset: -3, sleep: 5.8, steps: 3100, restingHR: 79, hrv: 31),
-                health(offset: -2, sleep: 5.6, steps: 2800, restingHR: 80, hrv: 30),
-                health(offset: -1, sleep: 5.4, steps: 2400, restingHR: 81, hrv: 29),
-                health(offset: 0, sleep: 5.3, steps: 2200, restingHR: 82, hrv: 28),
-            ]
-            let scheduleHistory = [
-                schedule(date: day(-4), eventCount: 5, busyHours: 6.0, backToBackCount: 3, lateNightEvents: 1),
-                schedule(date: day(-3), eventCount: 6, busyHours: 6.5, backToBackCount: 3, lateNightEvents: 1),
-                schedule(date: day(-2), eventCount: 6, busyHours: 7.0, backToBackCount: 4, lateNightEvents: 1),
-                schedule(date: day(-1), eventCount: 7, busyHours: 7.5, backToBackCount: 4, lateNightEvents: 1),
-                schedule(date: targetDate, eventCount: 7, busyHours: 8.0, backToBackCount: 4, lateNightEvents: 1),
-            ]
-            let events = [
-                SupabaseService.CalendarEventPayload(title: "Morning review", startTime: "08:00", endTime: "09:00", isBackToBack: false),
-                SupabaseService.CalendarEventPayload(title: "Exam prep session", startTime: "09:05", endTime: "10:30", isBackToBack: true),
-                SupabaseService.CalendarEventPayload(title: "Statistics exam", startTime: "11:00", endTime: "13:00", isBackToBack: false),
-                SupabaseService.CalendarEventPayload(title: "TA meeting", startTime: "13:15", endTime: "14:00", isBackToBack: true),
-                SupabaseService.CalendarEventPayload(title: "Lab write-up", startTime: "15:00", endTime: "17:00", isBackToBack: false),
-                SupabaseService.CalendarEventPayload(title: "Group project", startTime: "18:00", endTime: "19:30", isBackToBack: false),
-                SupabaseService.CalendarEventPayload(title: "Late study block", startTime: "21:00", endTime: "22:30", isBackToBack: false),
-            ]
-            return DemoScenarioSnapshot(
-                healthSummary: healthHistory.last!,
-                scheduleSummary: scheduleHistory.last!,
-                calendarEvents: events,
-                checkIns: [
-                    checkIn(offset: -2, stressLevel: 4, energyLevel: 2, caffeineServings: 3, notes: "Sleep has been rough."),
-                    checkIn(offset: -1, stressLevel: 5, energyLevel: 1, caffeineServings: 4, notes: "Exams are stacking up."),
-                    checkIn(offset: 0, stressLevel: 5, energyLevel: 1, caffeineServings: 4, notes: "Need a real recovery plan."),
-                ],
-                healthHistory: healthHistory,
-                scheduleHistory: scheduleHistory
-            )
         }
     }
 

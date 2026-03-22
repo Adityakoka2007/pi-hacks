@@ -366,8 +366,7 @@ final class SupabaseService {
         if http.statusCode == 422 || http.statusCode == 400 {
             let body = String(data: data, encoding: .utf8) ?? ""
             if body.lowercased().contains("already") || body.lowercased().contains("registered") {
-                try await signIn(email: email, password: password)
-                return
+                throw SupabaseServiceError.requestFailed("email_exists")
             }
             throw SupabaseServiceError.requestFailed(body)
         }

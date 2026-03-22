@@ -233,6 +233,7 @@ private struct AuthenticationScreen: View {
                                 .foregroundStyle(MindMarginTheme.red)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
+
                     }
                 }
 
