@@ -84,9 +84,87 @@ struct SettingsScreen: View {
                     }
                 }
 
+                SettingsSection(title: "Demo Mode") {
+                    MindMarginCard(padding: 18) {
+                        VStack(alignment: .leading, spacing: 16) {
+                            Toggle(isOn: Binding(
+                                get: { appModel.isDemoModeEnabled },
+                                set: { appModel.setDemoModeEnabled($0) }
+                            )) {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text("Enable demo mode")
+                                        .font(.headline)
+                                        .foregroundStyle(MindMarginTheme.textPrimary)
+
+                                    Text("Swap live Health and Calendar inputs for a stable walkthrough scenario.")
+                                        .font(.subheadline)
+                                        .foregroundStyle(MindMarginTheme.textSecondary)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                }
+                            }
+                            .tint(MindMarginTheme.indigo)
+
+                            if appModel.isDemoModeEnabled {
+                                Menu {
+                                    ForEach(MindMarginAppModel.DemoScenario.allCases) { scenario in
+                                        Button {
+                                            appModel.selectDemoScenario(scenario)
+                                        } label: {
+                                            if appModel.selectedDemoScenario == scenario {
+                                                Label(scenario.title, systemImage: "checkmark")
+                                            } else {
+                                                Text(scenario.title)
+                                            }
+                                        }
+                                    }
+                                } label: {
+                                    HStack(spacing: 12) {
+                                        ZStack {
+                                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                                .fill(MindMarginTheme.indigo.opacity(0.12))
+                                                .frame(width: 38, height: 38)
+                                            Image(systemName: "theatermasks.fill")
+                                                .font(.subheadline.weight(.semibold))
+                                                .foregroundStyle(MindMarginTheme.indigo)
+                                        }
+
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text("Scenario")
+                                                .font(.body.weight(.medium))
+                                                .foregroundStyle(MindMarginTheme.textPrimary)
+                                            Text(appModel.demoScenarioLabel)
+                                                .font(.subheadline)
+                                                .foregroundStyle(MindMarginTheme.textSecondary)
+                                        }
+
+                                        Spacer()
+
+                                        Image(systemName: "chevron.up.chevron.down")
+                                            .font(.caption.weight(.bold))
+                                            .foregroundStyle(MindMarginTheme.textTertiary)
+                                    }
+                                    .padding(16)
+                                    .background(Color.black.opacity(0.03), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                                }
+                                .buttonStyle(.plain)
+                            }
+
+                            Text(appModel.demoModeSummary)
+                                .font(.subheadline)
+                                .foregroundStyle(MindMarginTheme.textSecondary)
+                                .fixedSize(horizontal: false, vertical: true)
+
+                            Text("Demo mode reuses the existing forecast flow. If Supabase is connected, simulated summaries will sync to your current project.")
+                                .font(.caption)
+                                .foregroundStyle(MindMarginTheme.textSecondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                }
+
                 SettingsSection(title: "Data Sources") {
-                    SettingsRow(symbolName: "heart.fill", tint: MindMarginTheme.red, label: "Apple Health", value: appModel.isHealthAuthorized ? "Connected" : "Not connected")
-                    SettingsRow(symbolName: "calendar", tint: MindMarginTheme.blue, label: "Calendar", value: appModel.isCalendarAuthorized ? "Connected" : "Not connected")
+                    SettingsRow(symbolName: "heart.fill", tint: MindMarginTheme.red, label: "Apple Health", value: appModel.isDemoModeEnabled ? "Simulated" : (appModel.isHealthAuthorized ? "Connected" : "Not connected"))
+                    SettingsRow(symbolName: "calendar", tint: MindMarginTheme.blue, label: "Calendar", value: appModel.isDemoModeEnabled ? "Simulated" : (appModel.isCalendarAuthorized ? "Connected" : "Not connected"))
                     SettingsRow(symbolName: appModel.backendStatus.isConnected ? "link.circle.fill" : "externaldrive.badge.exclamationmark", tint: appModel.backendStatus.isConnected ? MindMarginTheme.green : MindMarginTheme.orange, label: "Supabase", value: appModel.backendStatus.label)
                 }
 

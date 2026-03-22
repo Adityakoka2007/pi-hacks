@@ -2,6 +2,7 @@ import SwiftUI
 
 struct DashboardScreen: View {
     @EnvironmentObject private var appModel: MindMarginAppModel
+    @State private var isScheduleExpanded = false
 
     var body: some View {
         ScrollView(showsIndicators: false) {
@@ -203,37 +204,69 @@ struct DashboardScreen: View {
     }
 
     private func factorCard(_ factor: MindMarginAppModel.DashboardFactor) -> some View {
-        HStack {
-            HStack(spacing: 14) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .fill(factor.tint.opacity(0.12))
-                        .frame(width: 42, height: 42)
+        let isDenseSchedule = factor.title == "Dense schedule" || factor.title == "Schedule pressure"
 
-                    Image(systemName: factor.symbolName)
-                        .font(.system(size: 18, weight: .semibold))
-                        .foregroundStyle(factor.tint)
+        return VStack(alignment: .leading, spacing: 14) {
+            Button {
+                if isDenseSchedule, !appModel.scheduleDisplayBlocks.isEmpty {
+                    withAnimation(.smooth(duration: 0.25)) {
+                        isScheduleExpanded.toggle()
+                    }
                 }
+            } label: {
+                HStack {
+                    HStack(spacing: 14) {
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .fill(factor.tint.opacity(0.12))
+                                .frame(width: 42, height: 42)
 
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(factor.title)
-                        .font(.headline)
-                        .foregroundStyle(MindMarginTheme.textPrimary)
+                            Image(systemName: factor.symbolName)
+                                .font(.system(size: 18, weight: .semibold))
+                                .foregroundStyle(factor.tint)
+                        }
 
-                    Text(factor.value)
-                        .font(.subheadline)
-                        .foregroundStyle(MindMarginTheme.textSecondary)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(factor.title)
+                                .font(.headline)
+                                .foregroundStyle(MindMarginTheme.textPrimary)
+
+                            Text(factor.value)
+                                .font(.subheadline)
+                                .foregroundStyle(MindMarginTheme.textSecondary)
+                        }
+                    }
+
+                    Spacer()
+
+                    if isDenseSchedule, !appModel.scheduleDisplayBlocks.isEmpty {
+                        Image(systemName: isScheduleExpanded ? "chevron.up" : "chevron.down")
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(MindMarginTheme.textTertiary)
+                    }
+
+                    Text(factor.impact.label)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(factor.impact == .high ? MindMarginTheme.red : factor.impact == .low ? .secondary : MindMarginTheme.yellow)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background((factor.impact == .high ? MindMarginTheme.highRiskBackground : factor.impact == .low ? Color(.systemGray5) : MindMarginTheme.moderateRiskBackground), in: Capsule())
                 }
             }
+            .buttonStyle(.plain)
 
-            Spacer()
+            if isDenseSchedule, isScheduleExpanded, !appModel.scheduleDisplayBlocks.isEmpty {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Schedule overview")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(MindMarginTheme.textPrimary)
 
-            Text(factor.impact.label)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(factor.impact == .high ? MindMarginTheme.red : factor.impact == .low ? .secondary : MindMarginTheme.yellow)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
-                .background((factor.impact == .high ? MindMarginTheme.highRiskBackground : factor.impact == .low ? Color(.systemGray5) : MindMarginTheme.moderateRiskBackground), in: Capsule())
+                    ForEach(appModel.scheduleDisplayBlocks) { block in
+                        scheduleBlockRow(block)
+                    }
+                }
+                .transition(.move(edge: .top).combined(with: .opacity))
+            }
         }
         .padding(16)
         .background(.white, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
@@ -241,6 +274,48 @@ struct DashboardScreen: View {
             RoundedRectangle(cornerRadius: 20, style: .continuous)
                 .stroke(MindMarginTheme.border, lineWidth: 1)
         }
+    }
+
+    private func scheduleBlockRow(_ block: MindMarginAppModel.ScheduleDisplayBlock) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            VStack(spacing: 2) {
+                Text(block.startLabel)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(MindMarginTheme.textPrimary)
+                Text(block.endLabel)
+                    .font(.caption2)
+                    .foregroundStyle(MindMarginTheme.textTertiary)
+            }
+            .frame(width: 54, alignment: .leading)
+
+            RoundedRectangle(cornerRadius: 999, style: .continuous)
+                .fill(block.tint)
+                .frame(width: 4)
+
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 8) {
+                    Text(block.kind == .event ? "Schedule block" : "Recovery block")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(block.tint)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(block.tint.opacity(0.12), in: Capsule())
+
+                    Spacer()
+                }
+
+                Text(block.title)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(MindMarginTheme.textPrimary)
+
+                Text(block.subtitle)
+                    .font(.caption)
+                    .foregroundStyle(MindMarginTheme.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(12)
+        .background(block.tint.opacity(0.06), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 
     private func errorCard(_ message: String) -> some View {

@@ -130,6 +130,8 @@ final class MindMarginAppModel: ObservableObject {
         let secondary: Double?
     }
 
+
+
     struct ScheduleDisplayBlock: Identifiable {
         enum Kind {
             case event
