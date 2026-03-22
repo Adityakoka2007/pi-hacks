@@ -130,6 +130,21 @@ final class MindMarginAppModel: ObservableObject {
         let secondary: Double?
     }
 
+    struct ScheduleDisplayBlock: Identifiable {
+        enum Kind {
+            case event
+            case recommendation
+        }
+
+        let id = UUID()
+        let kind: Kind
+        let title: String
+        let subtitle: String
+        let startLabel: String
+        let endLabel: String
+        let tint: Color
+    }
+
     @Published var onboardingStep: OnboardingStep = .welcome
     @Published var selectedTab: AppTab = .dashboard
     @Published var navigationPath: [Route] = []
@@ -144,8 +159,8 @@ final class MindMarginAppModel: ObservableObject {
     @Published var studentType: StudentType = .college
 
     @Published var stressLevel = 3
-    @Published var energyLevel = 2
-    @Published var caffeineServings = 2
+    @Published var energyLevel = 3
+    @Published var caffeineServings = 0
     @Published var helpfulYesterday: Bool?
     @Published var notes = ""
     @Published var isSubmittingCheckIn = false
@@ -159,6 +174,7 @@ final class MindMarginAppModel: ObservableObject {
     @Published private(set) var healthHistory: [DailyHealthSummary] = []
     @Published private(set) var scheduleHistory: [DailyScheduleSummary] = []
     @Published private(set) var dashboardFactors: [DashboardFactor] = []
+    @Published private(set) var scheduleDisplayBlocks: [ScheduleDisplayBlock] = []
     @Published private(set) var recommendationFeedbackDraftByID: [UUID: RecommendationFeedback] = [:]
     @Published private(set) var submittedRecommendationFeedbackByID: [UUID: RecommendationFeedback] = [:]
     @Published private(set) var backendStatus: BackendStatus = .notConfigured
@@ -393,23 +409,14 @@ final class MindMarginAppModel: ObservableObject {
             let fetchedSchedule = try await supa.fetchScheduleSummaries()
             let fetchedCheckIns = try await supa.fetchCheckIns()
 
-            if !fetchedHealth.isEmpty {
-                healthHistory = fetchedHealth
-                if let latest = fetchedHealth.last {
-                    healthSummary = latest
-                }
-            }
-            if !fetchedSchedule.isEmpty {
-                scheduleHistory = fetchedSchedule
-                if let latest = fetchedSchedule.last {
-                    scheduleSummary = latest
-                }
-            }
-            if !fetchedCheckIns.isEmpty {
-                checkInHistory = fetchedCheckIns
-            }
+            applyBackendSnapshot(
+                healthSummaries: fetchedHealth,
+                scheduleSummaries: fetchedSchedule,
+                checkIns: fetchedCheckIns
+            )
 
             dashboardFactors = Self.makeFallbackFactors(from: healthSummary, schedule: scheduleSummary)
+            scheduleDisplayBlocks = []
 
             do {
                 let targetDate = scheduleSummary.date
@@ -421,6 +428,10 @@ final class MindMarginAppModel: ObservableObject {
                 if !analysis.recommendations.isEmpty {
                     recommendations = analysis.recommendations
                 }
+                scheduleDisplayBlocks = Self.makeScheduleDisplayBlocks(
+                    from: [],
+                    recommendations: recommendations
+                )
                 if let fs = analysis.factorScores {
                     dashboardFactors = Self.makeDashboardFactors(
                         from: fs,
@@ -757,6 +768,7 @@ final class MindMarginAppModel: ObservableObject {
             recommendations = recommendationService.recommendations(for: localPrediction, features: features)
         }
         dashboardFactors = Self.makeFallbackFactors(from: healthSummary, schedule: scheduleSummary)
+        scheduleDisplayBlocks = []
 
         if let supabaseService {
             do {
@@ -782,6 +794,10 @@ final class MindMarginAppModel: ObservableObject {
                     if permissionsReady {
                         events = (try? await calendarClient.fetchTomorrowEvents()) ?? []
                     }
+                    scheduleDisplayBlocks = Self.makeScheduleDisplayBlocks(
+                        from: events,
+                        recommendations: recommendations
+                    )
 
                     let analysis = try await supabaseService.analyzeStress(
                         for: scheduleSummary.date,
@@ -793,6 +809,10 @@ final class MindMarginAppModel: ObservableObject {
                     if !analysis.recommendations.isEmpty {
                         recommendations = analysis.recommendations
                     }
+                    scheduleDisplayBlocks = Self.makeScheduleDisplayBlocks(
+                        from: events,
+                        recommendations: recommendations
+                    )
                     if let fs = analysis.factorScores {
                         dashboardFactors = Self.makeDashboardFactors(
                             from: fs,
@@ -800,9 +820,15 @@ final class MindMarginAppModel: ObservableObject {
                             schedule: scheduleSummary
                         )
                     }
-                    healthHistory = try await supabaseService.fetchHealthSummaries()
-                    scheduleHistory = try await supabaseService.fetchScheduleSummaries()
-                    checkInHistory = try await supabaseService.fetchCheckIns()
+                    let fetchedHealth = try await supabaseService.fetchHealthSummaries()
+                    let fetchedSchedule = try await supabaseService.fetchScheduleSummaries()
+                    let fetchedCheckIns = try await supabaseService.fetchCheckIns()
+                    applyBackendSnapshot(
+                        healthSummaries: fetchedHealth,
+                        scheduleSummaries: fetchedSchedule,
+                        checkIns: fetchedCheckIns
+                    )
+                    print("[MindMargin] Reloaded Supabase snapshot → healthRows=\(fetchedHealth.count) scheduleRows=\(fetchedSchedule.count) checkIns=\(fetchedCheckIns.count)")
                     backendStatus = .connected
                 }
             } catch {
@@ -871,6 +897,30 @@ final class MindMarginAppModel: ObservableObject {
             backendStatus = .connected
         } catch {
             backendStatus = .localOnly("Preferences were updated locally. Supabase profile sync failed: \(error.localizedDescription)")
+        }
+    }
+
+    private func applyBackendSnapshot(
+        healthSummaries: [DailyHealthSummary],
+        scheduleSummaries: [DailyScheduleSummary],
+        checkIns: [StressCheckIn]
+    ) {
+        if !healthSummaries.isEmpty {
+            healthHistory = healthSummaries
+            if let latest = healthSummaries.last {
+                healthSummary = latest
+            }
+        }
+
+        if !scheduleSummaries.isEmpty {
+            scheduleHistory = scheduleSummaries
+            if let latest = scheduleSummaries.last {
+                scheduleSummary = latest
+            }
+        }
+
+        if !checkIns.isEmpty {
+            checkInHistory = checkIns
         }
     }
 
@@ -959,6 +1009,50 @@ final class MindMarginAppModel: ObservableObject {
         }
     }
 
+    private static func makeScheduleDisplayBlocks(
+        from events: [SupabaseService.CalendarEventPayload],
+        recommendations: [Recommendation]
+    ) -> [ScheduleDisplayBlock] {
+        guard !events.isEmpty else { return [] }
+
+        let relaxationRecommendations = recommendations.filter {
+            ["mindfulness", "movement", "general", "social"].contains($0.category)
+        }
+
+        var blocks: [ScheduleDisplayBlock] = []
+
+        for (index, event) in events.enumerated() {
+            blocks.append(
+                ScheduleDisplayBlock(
+                    kind: .event,
+                    title: event.title,
+                    subtitle: event.isBackToBack == true ? "Back-to-back commitment" : "Scheduled commitment",
+                    startLabel: event.startTime,
+                    endLabel: event.endTime,
+                    tint: MindMarginTheme.yellow
+                )
+            )
+
+            guard index < events.count - 1 else { continue }
+            guard index < relaxationRecommendations.count else { continue }
+
+            let recommendation = relaxationRecommendations[index]
+            let nextEvent = events[index + 1]
+            blocks.append(
+                ScheduleDisplayBlock(
+                    kind: .recommendation,
+                    title: recommendation.title,
+                    subtitle: recommendation.body,
+                    startLabel: event.endTime,
+                    endLabel: nextEvent.startTime,
+                    tint: MindMarginTheme.green
+                )
+            )
+        }
+
+        return blocks
+    }
+
     private static func makeDashboardFactors(
         from factorScores: SupabaseService.FactorScores?,
         health: DailyHealthSummary,
@@ -1010,7 +1104,7 @@ final class MindMarginAppModel: ObservableObject {
                     return sleep >= 7.8 ? "None" : "\(max(0.1, 7.8 - sleep).formatted(.number.precision(.fractionLength(1))))h below baseline"
                 }(),
                 tint: MindMarginTheme.red,
-                impact: .high
+                impact: health.sleepHours == nil ? .low : .high
             ),
             DashboardFactor(
                 symbolName: "calendar",
