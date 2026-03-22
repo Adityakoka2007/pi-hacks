@@ -480,7 +480,10 @@ final class MindMarginAppModel: ObservableObject {
                 accountPassword = password
                 hasAttemptedBackendSignIn = true
                 backendStatus = .connected
-                onboardingStep = .permissions
+                onboardingStep = permissionsReady ? .complete : .permissions
+                if permissionsReady {
+                    await syncProfilePreferences()
+                }
             } catch {
                 backendStatus = .localOnly("Account creation failed: \(error.localizedDescription)")
                 errorMessage = error.localizedDescription
@@ -506,7 +509,10 @@ final class MindMarginAppModel: ObservableObject {
                 accountPassword = password
                 hasAttemptedBackendSignIn = true
                 backendStatus = .connected
-                onboardingStep = .permissions
+                onboardingStep = permissionsReady ? .complete : .permissions
+                if permissionsReady {
+                    await syncProfilePreferences()
+                }
             } catch {
                 backendStatus = .localOnly("Log in failed: \(error.localizedDescription)")
                 errorMessage = error.localizedDescription
@@ -518,7 +524,7 @@ final class MindMarginAppModel: ObservableObject {
 
     func continueFromPermissions() {
         guard permissionsReady else { return }
-        onboardingStep = .personalization
+        finishOnboarding()
     }
 
     func finishOnboarding() {
