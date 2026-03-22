@@ -196,11 +196,17 @@ struct DashboardScreen: View {
                         scheduleBlockRow(block)
                     }
                 }
-                .transition(.move(edge: .top).combined(with: .opacity))
+                .transition(
+                    .asymmetric(
+                        insertion: .opacity.combined(with: .scale(scale: 0.98, anchor: .top)),
+                        removal: .opacity
+                    )
+                )
             }
         }
         .padding(16)
         .background(.white, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .clipped()
         .overlay {
             RoundedRectangle(cornerRadius: 20, style: .continuous)
                 .stroke(MindMarginTheme.border, lineWidth: 1)
