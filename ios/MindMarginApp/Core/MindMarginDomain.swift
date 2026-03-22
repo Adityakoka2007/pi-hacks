@@ -10,13 +10,13 @@ struct DailyHealthSummary: Codable, Identifiable {
 }
 
 extension DailyHealthSummary {
-    static let sample = DailyHealthSummary(
+    static let empty = DailyHealthSummary(
         id: UUID(),
         date: .now,
-        sleepHours: 6.4,
-        steps: 5_480,
-        restingHeartRate: 72,
-        heartRateVariability: 38
+        sleepHours: 0,
+        steps: 0,
+        restingHeartRate: nil,
+        heartRateVariability: nil
     )
 }
 
@@ -30,13 +30,13 @@ struct DailyScheduleSummary: Codable, Identifiable {
 }
 
 extension DailyScheduleSummary {
-    static let sample = DailyScheduleSummary(
+    static let empty = DailyScheduleSummary(
         id: UUID(),
         date: Calendar.current.date(byAdding: .day, value: 1, to: .now) ?? .now,
-        eventCount: 6,
-        busyHours: 5.5,
-        backToBackCount: 3,
-        lateNightEvents: 1
+        eventCount: 0,
+        busyHours: 0,
+        backToBackCount: 0,
+        lateNightEvents: 0
     )
 }
 
@@ -51,14 +51,7 @@ struct StressCheckIn: Codable, Identifiable {
 }
 
 extension StressCheckIn {
-    static let sampleHistory: [StressCheckIn] = [
-        StressCheckIn(id: UUID(), date: .now.addingTimeInterval(-6 * 86_400), stressLevel: 3, energyLevel: 3, caffeineServings: 1, helpfulYesterday: true, notes: nil),
-        StressCheckIn(id: UUID(), date: .now.addingTimeInterval(-5 * 86_400), stressLevel: 4, energyLevel: 2, caffeineServings: 2, helpfulYesterday: true, notes: nil),
-        StressCheckIn(id: UUID(), date: .now.addingTimeInterval(-4 * 86_400), stressLevel: 5, energyLevel: 2, caffeineServings: 2, helpfulYesterday: false, notes: "Exam prep night."),
-        StressCheckIn(id: UUID(), date: .now.addingTimeInterval(-3 * 86_400), stressLevel: 4, energyLevel: 3, caffeineServings: 3, helpfulYesterday: false, notes: nil),
-        StressCheckIn(id: UUID(), date: .now.addingTimeInterval(-2 * 86_400), stressLevel: 3, energyLevel: 4, caffeineServings: 1, helpfulYesterday: true, notes: nil),
-        StressCheckIn(id: UUID(), date: .now.addingTimeInterval(-1 * 86_400), stressLevel: 3, energyLevel: 4, caffeineServings: 1, helpfulYesterday: true, notes: nil),
-    ]
+    static let sampleHistory: [StressCheckIn] = []
 }
 
 struct StressFeatures: Codable {
@@ -93,15 +86,10 @@ struct StressPrediction: Codable {
 }
 
 extension StressPrediction {
-    static let sample = StressPrediction(
-        riskLevel: .high,
-        score: 0.78,
-        topFactors: [
-            "Sleep debt has built across multiple nights.",
-            "Tomorrow's calendar has several back-to-back blocks.",
-            "Activity is below your recent baseline.",
-            "Resting heart rate is elevated above normal."
-        ]
+    static let empty = StressPrediction(
+        riskLevel: .low,
+        score: 0,
+        topFactors: []
     )
 }
 
@@ -114,29 +102,7 @@ struct Recommendation: Codable, Identifiable {
 }
 
 extension Recommendation {
-    static let sampleData: [Recommendation] = [
-        Recommendation(
-            id: UUID(),
-            title: "Protect your bedtime tonight",
-            body: "Aim for lights out by 10:30 PM and keep your final half hour quiet.",
-            rationale: "Sleep debt is your strongest risk driver right now.",
-            category: "sleep"
-        ),
-        Recommendation(
-            id: UUID(),
-            title: "Add a 20-minute buffer after your second class",
-            body: "Block a small recovery window before the next push starts.",
-            rationale: "Your schedule is dense enough that short breaks will lower overload.",
-            category: "schedule"
-        ),
-        Recommendation(
-            id: UUID(),
-            title: "Take a 10-minute walk before evening study",
-            body: "Use movement to reset before you ask for more focus.",
-            rationale: "Recent activity is below baseline, which tends to amplify stress.",
-            category: "movement"
-        )
-    ]
+    static let sampleData: [Recommendation] = []
 }
 
 protocol StressPredicting {
@@ -265,38 +231,3 @@ struct RecommendationEngine: RecommendationProviding {
     }
 }
 
-final class HealthKitClient {
-    func requestAuthorization() async throws {
-    }
-
-    func fetchLatestSummary() async throws -> DailyHealthSummary {
-        DailyHealthSummary(
-            id: UUID(),
-            date: .now,
-            sleepHours: 6.8,
-            steps: 7_120,
-            restingHeartRate: 65,
-            heartRateVariability: 42
-        )
-    }
-}
-
-final class CalendarClient {
-    func requestAccess() async throws {
-    }
-
-    func fetchTomorrowSummary() async throws -> DailyScheduleSummary {
-        DailyScheduleSummary(
-            id: UUID(),
-            date: Calendar.current.date(byAdding: .day, value: 1, to: .now) ?? .now,
-            eventCount: 6,
-            busyHours: 5.5,
-            backToBackCount: 3,
-            lateNightEvents: 1
-        )
-    }
-
-    func fetchTomorrowEvents() async throws -> [SupabaseService.CalendarEventPayload] {
-        []
-    }
-}

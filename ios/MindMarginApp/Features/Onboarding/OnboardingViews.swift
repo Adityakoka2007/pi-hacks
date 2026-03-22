@@ -8,6 +8,8 @@ struct OnboardingFlowView: View {
             switch appModel.onboardingStep {
             case .welcome:
                 WelcomeScreen()
+            case .authentication:
+                AuthenticationScreen()
             case .permissions:
                 PermissionsScreen()
             case .personalization:
@@ -96,6 +98,174 @@ private struct WelcomeScreen: View {
     }
 }
 
+private struct AuthenticationScreen: View {
+    enum Mode {
+        case signUp
+        case signIn
+    }
+
+    @EnvironmentObject private var appModel: MindMarginAppModel
+    @State private var mode: Mode = .signUp
+
+    private var title: String {
+        switch mode {
+        case .signUp:
+            return "Create your account"
+        case .signIn:
+            return "Log in"
+        }
+    }
+
+    private var subtitle: String {
+        switch mode {
+        case .signUp:
+            return "Use your email and a password to create an account and continue into the app."
+        case .signIn:
+            return "Use the email and password for the account you already created."
+        }
+    }
+
+    private var primaryButtonTitle: String {
+        switch mode {
+        case .signUp:
+            return appModel.isAuthenticating ? "Creating Account..." : "Get Started"
+        case .signIn:
+            return appModel.isAuthenticating ? "Logging In..." : "Log In"
+        }
+    }
+
+    private var secondaryButtonTitle: String {
+        switch mode {
+        case .signUp:
+            return "Log In"
+        case .signIn:
+            return "Create Account"
+        }
+    }
+
+    private var isPrimaryDisabled: Bool {
+        appModel.isAuthenticating
+            || (mode == .signUp && appModel.accountName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            || appModel.accountEmail.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            || appModel.accountPassword.count < 6
+    }
+
+    var body: some View {
+        ScrollView(showsIndicators: false) {
+            VStack(alignment: .leading, spacing: 24) {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(title)
+                        .font(.system(size: 34, weight: .semibold, design: .rounded))
+                        .foregroundStyle(MindMarginTheme.textPrimary)
+
+                    Text(subtitle)
+                        .font(.body)
+                        .foregroundStyle(MindMarginTheme.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(.top, 16)
+
+                MindMarginCard {
+                    VStack(alignment: .leading, spacing: 18) {
+                        if mode == .signUp {
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("Name")
+                                    .font(.subheadline.weight(.semibold))
+                                    .foregroundStyle(MindMarginTheme.textPrimary)
+
+                                TextField("Your name", text: $appModel.accountName)
+                                    .textInputAutocapitalization(.words)
+                                    .foregroundStyle(Color.black)
+                                    .tint(Color.black)
+                                    .padding(.horizontal, 16)
+                                    .padding(.vertical, 14)
+                                    .background(.white, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                                    .overlay {
+                                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                            .stroke(MindMarginTheme.border, lineWidth: 1)
+                                    }
+                            }
+                        }
+
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Email")
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(MindMarginTheme.textPrimary)
+
+                            TextField("you@example.com", text: $appModel.accountEmail)
+                                .keyboardType(.emailAddress)
+                                .textInputAutocapitalization(.never)
+                                .autocorrectionDisabled()
+                                .foregroundStyle(Color.black)
+                                .tint(Color.black)
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 14)
+                                .background(.white, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                                .overlay {
+                                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                        .stroke(MindMarginTheme.border, lineWidth: 1)
+                                }
+                        }
+
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Password")
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(MindMarginTheme.textPrimary)
+
+                            SecureField("At least 6 characters", text: $appModel.accountPassword)
+                                .textInputAutocapitalization(.never)
+                                .autocorrectionDisabled()
+                                .foregroundStyle(Color.black)
+                                .tint(Color.black)
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 14)
+                                .background(.white, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                                .overlay {
+                                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                        .stroke(MindMarginTheme.border, lineWidth: 1)
+                                }
+                        }
+
+                        Text("Email verification is off for this flow, so account creation should take you straight into setup.")
+                            .font(.footnote)
+                            .foregroundStyle(MindMarginTheme.textSecondary)
+                            .fixedSize(horizontal: false, vertical: true)
+
+                        if let errorMessage = appModel.errorMessage {
+                            Text(errorMessage)
+                                .font(.footnote)
+                                .foregroundStyle(MindMarginTheme.red)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                }
+
+                MindMarginPrimaryButton(title: primaryButtonTitle, disabled: isPrimaryDisabled) {
+                    let normalizedName = appModel.accountName.trimmingCharacters(in: .whitespacesAndNewlines)
+                    let normalizedEmail = appModel.accountEmail.trimmingCharacters(in: .whitespacesAndNewlines)
+                    switch mode {
+                    case .signUp:
+                        appModel.signUpWithEmail(name: normalizedName, email: normalizedEmail, password: appModel.accountPassword)
+                    case .signIn:
+                        appModel.signInWithEmail(email: normalizedEmail, password: appModel.accountPassword)
+                    }
+                }
+
+                Button(secondaryButtonTitle) {
+                    mode = mode == .signUp ? .signIn : .signUp
+                }
+                .buttonStyle(.plain)
+                .font(.headline)
+                .foregroundStyle(MindMarginTheme.indigo)
+                .frame(maxWidth: .infinity)
+                .padding(.bottom, 32)
+            }
+            .padding(.horizontal, 24)
+        }
+        .background(MindMarginTheme.background.ignoresSafeArea())
+    }
+}
+
 private struct PermissionsScreen: View {
     @EnvironmentObject private var appModel: MindMarginAppModel
 
@@ -123,9 +293,31 @@ private struct PermissionsScreen: View {
                         title: "Apple Health",
                         description: "We analyze sleep, activity, resting heart rate, and HRV to detect early stress signals.",
                         items: ["Sleep duration & quality", "Daily activity", "Resting heart rate", "Heart rate variability"],
-                        granted: appModel.isHealthAuthorized,
+                        authorizationState: appModel.healthAuthorizationState,
                         action: appModel.grantHealthAccess
                     )
+
+                    if let helpMessage = appModel.healthPermissionHelpMessage {
+                        MindMarginCard(padding: 16) {
+                            VStack(alignment: .leading, spacing: 10) {
+                                Text("Health access")
+                                    .font(.headline)
+                                    .foregroundStyle(MindMarginTheme.textPrimary)
+
+                                Text(helpMessage)
+                                    .font(.footnote)
+                                    .foregroundStyle(MindMarginTheme.textSecondary)
+                                    .fixedSize(horizontal: false, vertical: true)
+
+                                Button("Dismiss") {
+                                    appModel.dismissHealthPermissionHelpMessage()
+                                }
+                                .font(.footnote.weight(.semibold))
+                                .foregroundStyle(MindMarginTheme.indigo)
+                                .buttonStyle(.plain)
+                            }
+                        }
+                    }
 
                     PermissionCard(
                         symbolName: "calendar",
@@ -133,7 +325,7 @@ private struct PermissionsScreen: View {
                         title: "Calendar",
                         description: "Schedule density helps us predict overload risk and suggest buffer time.",
                         items: ["Event count & duration", "Time between events", "Schedule patterns"],
-                        granted: appModel.isCalendarAuthorized,
+                        authorizationState: appModel.calendarAuthorizationState,
                         action: appModel.grantCalendarAccess
                     )
                 }
@@ -177,8 +369,25 @@ private struct PermissionCard: View {
     let title: String
     let description: String
     let items: [String]
-    let granted: Bool
+    let authorizationState: PlatformAuthorizationState
     let action: () -> Void
+
+    private var isGranted: Bool {
+        authorizationState == .authorized
+    }
+
+    private var buttonTitle: String {
+        switch authorizationState {
+        case .authorized:
+            return "Granted"
+        case .denied:
+            return "Manage Access"
+        case .unavailable:
+            return "Unavailable"
+        case .notDetermined:
+            return "Grant Access"
+        }
+    }
 
     var body: some View {
         MindMarginCard {
@@ -222,20 +431,20 @@ private struct PermissionCard: View {
 
                 Button(action: action) {
                     HStack(spacing: 8) {
-                        if granted {
+                        if isGranted {
                             Image(systemName: "checkmark")
                         }
-                        Text(granted ? "Granted" : "Grant Access")
+                        Text(buttonTitle)
                     }
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(.white)
                     .padding(.horizontal, 18)
                     .padding(.vertical, 12)
-                    .background(granted ? MindMarginTheme.green : Color.black.opacity(0.9), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .background(isGranted ? MindMarginTheme.green : Color.black.opacity(0.9), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                 }
                 .buttonStyle(.plain)
                 .padding(.leading, 62)
-                .disabled(granted)
+                .disabled(authorizationState == .unavailable || isGranted)
             }
         }
     }

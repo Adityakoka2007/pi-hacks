@@ -8,6 +8,7 @@
 
 /* Begin PBXFileReference section */
 		B04DFFF02F6F28E40079326B /* pi hacks.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "pi hacks.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		B0B3681C2F6F41530010C28A /* pi hacks.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = "pi hacks.entitlements"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -32,6 +33,7 @@
 		B04DFFE72F6F28E40079326B = {
 			isa = PBXGroup;
 			children = (
+				B0B3681C2F6F41530010C28A /* pi hacks.entitlements */,
 				B04DFFF22F6F28E50079326B /* ios/MindMarginApp */,
 				B04DFFF12F6F28E50079326B /* Products */,
 			);
@@ -82,6 +84,11 @@
 				TargetAttributes = {
 					B04DFFEF2F6F28E40079326B = {
 						CreatedOnToolsVersion = 26.0.1;
+						SystemCapabilities = {
+							com.apple.HealthKit = {
+								enabled = 1;
+							};
+						};
 					};
 				};
 			};
@@ -249,12 +256,15 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = "pi hacks.entitlements";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = RLA5H6MJN3;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = ios/AppInfo.plist;
+				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "Allow access to read your calendar data";
+				INFOPLIST_KEY_NSHealthShareUsageDescription = "Allow access to read your health data";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -282,12 +292,15 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = "pi hacks.entitlements";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = RLA5H6MJN3;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = ios/AppInfo.plist;
+				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "Allow access to read your calendar data";
+				INFOPLIST_KEY_NSHealthShareUsageDescription = "Allow access to read your health data";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;

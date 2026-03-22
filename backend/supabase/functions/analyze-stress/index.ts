@@ -350,38 +350,53 @@ Return exactly 3 personalised, actionable recommendations as a JSON array — no
   }
 ]`
 
-    // ── Call OpenAI ───────────────────────────────────────────────────────────
+    // ── Call OpenAI (best-effort — score is returned even if GPT fails) ──────
+    type AiRec = { title: string; body: string; rationale: string; category: string }
+    let aiRecommendations: AiRec[] = []
+
     const openaiKey = Deno.env.get("OPENAI_API_KEY")
-    if (!openaiKey) throw new Error("OPENAI_API_KEY not set")
+    if (openaiKey) {
+      try {
+        const gptResponse = await fetch("https://api.openai.com/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${openaiKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            model:       "gpt-4o-mini",
+            messages:    [{ role: "user", content: prompt }],
+            temperature: 0.7,
+            max_tokens:  700,
+          }),
+        })
 
-    const gptResponse = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${openaiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model:       "gpt-4o-mini",
-        messages:    [{ role: "user", content: prompt }],
-        temperature: 0.7,
-        max_tokens:  700,
-      }),
-    })
-
-    if (!gptResponse.ok) {
-      throw new Error(`OpenAI error ${gptResponse.status}: ${await gptResponse.text()}`)
+        if (gptResponse.ok) {
+          const gptData = await gptResponse.json()
+          const rawContent: string = gptData.choices[0].message.content.trim()
+          const jsonStr = rawContent.replace(/^```(?:json)?\n?/, "").replace(/\n?```$/, "")
+          aiRecommendations = JSON.parse(jsonStr)
+        }
+      } catch {
+        // GPT failed — continue with rule-based recommendations only
+      }
     }
 
-    const gptData     = await gptResponse.json()
-    const rawContent: string = gptData.choices[0].message.content.trim()
-
-    type AiRec = { title: string; body: string; rationale: string; category: string }
-    let aiRecommendations: AiRec[]
-    try {
-      const jsonStr = rawContent.replace(/^```(?:json)?\n?/, "").replace(/\n?```$/, "")
-      aiRecommendations = JSON.parse(jsonStr)
-    } catch {
-      throw new Error(`Failed to parse GPT response as JSON: ${rawContent}`)
+    if (aiRecommendations.length === 0) {
+      aiRecommendations = topFactors.slice(0, 3).map((factor, i) => ({
+        title: ["Prioritise recovery", "Adjust your schedule", "Stay active"][i] ?? "Take care",
+        body: factor,
+        rationale: `This factor contributed ${r1(namedFactors[i]?.score ?? 0)} points to your stress score.`,
+        category: "general",
+      }))
+      if (aiRecommendations.length === 0) {
+        aiRecommendations = [{
+          title: "You're in good shape",
+          body: "No strong stress drivers were detected for this date.",
+          rationale: "All biomarker and schedule signals are within healthy ranges.",
+          category: "general",
+        }]
+      }
     }
 
     // ── Upsert stress prediction (delete + insert for idempotency) ────────────

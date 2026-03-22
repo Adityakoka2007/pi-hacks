@@ -3,6 +3,9 @@ create extension if not exists "pgcrypto";
 create table if not exists public.profiles (
     id uuid primary key references auth.users(id) on delete cascade,
     display_name text,
+    user_name text,
+    email text,
+    password text,
     check_in_time text default '20:00',
     preferred_intervention_style text default 'gentle',
     created_at timestamptz not null default now()

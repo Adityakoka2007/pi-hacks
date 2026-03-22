@@ -6,6 +6,7 @@ Packages/
 Package.resolved
 .env
 .env.local
+ios/MindMarginApp/SupabaseSecrets.plist
 DerivedData/
 /build/
 /mind margin/DerivedData/

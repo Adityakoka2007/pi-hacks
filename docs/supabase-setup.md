@@ -19,16 +19,21 @@ In Xcode, add the package:
 
 - `https://github.com/supabase/supabase-swift`
 
-## 4. Wire App Config
+## 4. Wire App Config (iOS)
 
-Provide `SUPABASE_URL` and `SUPABASE_ANON_KEY` to the app target used by [ios/MindMarginApp](/Users/adityakoka/Desktop/my-projects/pi%20hacks%20hackathon%20proj/ios/MindMarginApp), either through the environment or `Info.plist`.
+The iOS app **does not read** `backend/supabase/.env`. Use one of:
+
+1. **Xcode scheme:** Product → Scheme → Edit Scheme → Run → Arguments → Environment Variables — add `SUPABASE_URL` and `SUPABASE_ANON_KEY`.
+2. **Bundled plist:** Copy `ios/MindMarginApp/SupabaseSecrets.example.plist` to `ios/MindMarginApp/SupabaseSecrets.plist`, fill in real values (`SupabaseSecrets.plist` is gitignored).
+
+In Supabase: **Authentication → Providers** — enable **Anonymous** (for automatic sign-in on launch) and/or **Email** (for account sign-up).
 
 ## 5. Recommended Hackathon Auth
 
 Use one of these:
 
-- anonymous auth for fastest demo onboarding
-- Sign in with Apple for the polished version
+- Anonymous auth for fastest demo onboarding (must be enabled in the Supabase dashboard).
+- Email/password (enable the Email provider in Supabase).
 
 ## 6. First App Writes
 

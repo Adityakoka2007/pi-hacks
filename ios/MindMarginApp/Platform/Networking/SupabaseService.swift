@@ -201,11 +201,17 @@ final class SupabaseService {
         let id: String
         let checkInTime: String
         let preferredInterventionStyle: String
+        let userName: String?
+        let email: String?
+        let password: String?
 
         enum CodingKeys: String, CodingKey {
             case id
             case checkInTime = "check_in_time"
             case preferredInterventionStyle = "preferred_intervention_style"
+            case userName = "user_name"
+            case email
+            case password
         }
     }
 
@@ -298,7 +304,7 @@ final class SupabaseService {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = Data("{}".utf8)
 
-        let authSession = try await send(request, decode: Session.self, acceptedStatusCodes: [200])
+        let authSession = try await send(request, decode: Session.self, acceptedStatusCodes: [200, 201])
         applySession(authSession)
     }
 
@@ -319,6 +325,42 @@ final class SupabaseService {
         UserDefaults.standard.removeObject(forKey: Self.refreshTokenStorageKey)
     }
 
+    func signUp(email: String, password: String) async throws {
+        let url = configuration.url.appendingPathComponent("auth/v1/signup")
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue(configuration.anonKey, forHTTPHeaderField: "apikey")
+        request.setValue("Bearer \(configuration.anonKey)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONEncoder().encode(EmailAuthBody(email: email, password: password))
+
+        let (data, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse else {
+            throw SupabaseServiceError.invalidResponse
+        }
+        guard [200, 201].contains(http.statusCode) else {
+            let body = String(data: data, encoding: .utf8) ?? "unknown"
+            throw SupabaseServiceError.requestFailed(body)
+        }
+
+        try await signIn(email: email, password: password)
+    }
+
+    func signIn(email: String, password: String) async throws {
+        var components = URLComponents(url: configuration.url.appendingPathComponent("auth/v1/token"), resolvingAgainstBaseURL: false)!
+        components.queryItems = [URLQueryItem(name: "grant_type", value: "password")]
+
+        var request = URLRequest(url: components.url!)
+        request.httpMethod = "POST"
+        request.setValue(configuration.anonKey, forHTTPHeaderField: "apikey")
+        request.setValue("Bearer \(configuration.anonKey)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONEncoder().encode(EmailAuthBody(email: email, password: password))
+
+        let authSession = try await send(request, decode: Session.self, acceptedStatusCodes: [200, 201])
+        applySession(authSession)
+    }
+
     /// Native Sign in with Apple → Supabase `grant_type=id_token`.
     func signInWithApple(idToken: String, rawNonce: String?) async throws {
         var components = URLComponents(url: configuration.url.appendingPathComponent("auth/v1/token"), resolvingAgainstBaseURL: false)!
@@ -333,7 +375,7 @@ final class SupabaseService {
             IdTokenGrantBody(provider: "apple", idToken: idToken, nonce: rawNonce)
         )
 
-        let authSession = try await send(request, decode: Session.self, acceptedStatusCodes: [200])
+        let authSession = try await send(request, decode: Session.self, acceptedStatusCodes: [200, 201])
         applySession(authSession)
     }
 
@@ -408,7 +450,7 @@ final class SupabaseService {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONEncoder().encode(RefreshTokenBody(refreshToken: refreshToken))
 
-        let authSession = try await send(request, decode: Session.self, acceptedStatusCodes: [200])
+        let authSession = try await send(request, decode: Session.self, acceptedStatusCodes: [200, 201])
         applySession(authSession)
     }
 
@@ -423,7 +465,7 @@ final class SupabaseService {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONEncoder().encode(PKCEExchangeBody(authCode: code, codeVerifier: codeVerifier))
 
-        let authSession = try await send(request, decode: Session.self, acceptedStatusCodes: [200])
+        let authSession = try await send(request, decode: Session.self, acceptedStatusCodes: [200, 201])
         applySession(authSession)
     }
 
@@ -467,6 +509,11 @@ final class SupabaseService {
         }
     }
 
+    private struct EmailAuthBody: Encodable {
+        let email: String
+        let password: String
+    }
+
     private struct PKCEExchangeBody: Encodable {
         let authCode: String
         let codeVerifier: String
@@ -477,7 +524,13 @@ final class SupabaseService {
         }
     }
 
-    func upsertProfile(reminderTime: String, preferredInterventionStyle: String) async throws {
+    func upsertProfile(
+        reminderTime: String,
+        preferredInterventionStyle: String,
+        userName: String? = nil,
+        email: String? = nil,
+        password: String? = nil
+    ) async throws {
         guard let token = sessionToken, let userId else {
             throw SupabaseServiceError.notAuthenticated
         }
@@ -485,7 +538,10 @@ final class SupabaseService {
         let payload = ProfilePayload(
             id: userId,
             checkInTime: reminderTime,
-            preferredInterventionStyle: preferredInterventionStyle.lowercased()
+            preferredInterventionStyle: preferredInterventionStyle.lowercased(),
+            userName: userName,
+            email: email,
+            password: password
         )
 
         try await upsert(table: "profiles", payload: payload, token: token, conflictColumns: "id")

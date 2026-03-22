@@ -2,11 +2,13 @@ import AuthenticationServices
 import Combine
 import Foundation
 import SwiftUI
+import UIKit
 
 @MainActor
 final class MindMarginAppModel: ObservableObject {
     enum OnboardingStep {
         case welcome
+        case authentication
         case permissions
         case personalization
         case complete
@@ -131,6 +133,8 @@ final class MindMarginAppModel: ObservableObject {
 
     @Published var isHealthAuthorized = false
     @Published var isCalendarAuthorized = false
+    @Published private(set) var healthAuthorizationState: PlatformAuthorizationState = .notDetermined
+    @Published private(set) var calendarAuthorizationState: PlatformAuthorizationState = .notDetermined
 
     @Published var reminderTime = Calendar.current.date(bySettingHour: 20, minute: 0, second: 0, of: .now) ?? .now
     @Published var communicationStyle: CommunicationStyle = .balanced
@@ -144,9 +148,9 @@ final class MindMarginAppModel: ObservableObject {
     @Published var isSubmittingCheckIn = false
     @Published var isRefreshingForecast = false
 
-    @Published private(set) var healthSummary = DailyHealthSummary.sample
-    @Published private(set) var scheduleSummary = DailyScheduleSummary.sample
-    @Published private(set) var prediction = StressPrediction.sample
+    @Published private(set) var healthSummary = DailyHealthSummary.empty
+    @Published private(set) var scheduleSummary = DailyScheduleSummary.empty
+    @Published private(set) var prediction = StressPrediction.empty
     @Published private(set) var recommendations: [Recommendation] = []
     @Published private(set) var checkInHistory: [StressCheckIn] = []
     @Published private(set) var healthHistory: [DailyHealthSummary] = []
@@ -156,6 +160,12 @@ final class MindMarginAppModel: ObservableObject {
     @Published private(set) var backendStatus: BackendStatus = .notConfigured
     @Published private(set) var errorMessage: String?
     @Published private(set) var lastSavedCheckInMessage: String?
+    @Published private(set) var healthPermissionHelpMessage: String?
+    @Published private(set) var isAuthenticating = false
+
+    @Published var accountName = ""
+    @Published var accountEmail = ""
+    @Published var accountPassword = ""
 
     let healthKitClient: HealthKitClient
     let calendarClient: CalendarClient
@@ -172,11 +182,11 @@ final class MindMarginAppModel: ObservableObject {
         self.predictionService = RuleBasedStressPredictor()
         self.recommendationService = RecommendationEngine()
         self.supabaseService = SupabaseConfiguration.load().map { SupabaseService(configuration: $0) }
-        self.recommendations = Recommendation.sampleData
-        self.dashboardFactors = Self.makeFallbackFactors(from: healthSummary, schedule: scheduleSummary)
+        self.recommendations = []
+        self.dashboardFactors = []
         self.checkInHistory = []
-        self.healthHistory = [healthSummary]
-        self.scheduleHistory = [scheduleSummary]
+        self.healthHistory = []
+        self.scheduleHistory = []
     }
 
     init(
@@ -191,11 +201,11 @@ final class MindMarginAppModel: ObservableObject {
         self.predictionService = predictionService
         self.recommendationService = recommendationService
         self.supabaseService = supabaseService
-        self.recommendations = Recommendation.sampleData
-        self.dashboardFactors = Self.makeFallbackFactors(from: healthSummary, schedule: scheduleSummary)
+        self.recommendations = []
+        self.dashboardFactors = []
         self.checkInHistory = []
-        self.healthHistory = [healthSummary]
-        self.scheduleHistory = [scheduleSummary]
+        self.healthHistory = []
+        self.scheduleHistory = []
     }
 
     var isOnboardingComplete: Bool {
@@ -356,16 +366,136 @@ final class MindMarginAppModel: ObservableObject {
     func bootstrap() async {
         guard !hasBootstrapped else { return }
         hasBootstrapped = true
+        await refreshAuthorizationStates()
         do {
             try await connectBackendIfNeeded()
         } catch {
-            backendStatus = .localOnly("Using local mode because Supabase sign-in failed: \(error.localizedDescription)")
+            backendStatus = .localOnly(
+                "Supabase sign-in failed: \(error.localizedDescription). Put SUPABASE_URL and SUPABASE_ANON_KEY in the Run scheme (not backend/.env), enable Anonymous or Email under Authentication → Providers, and confirm the anon key matches your project."
+            )
         }
+
+        if let supabaseService, supabaseService.isAuthenticated {
+            await loadExistingDataFromBackend(supabaseService)
+        }
+
         await refreshForecast()
     }
 
+    private func loadExistingDataFromBackend(_ supa: SupabaseService) async {
+        do {
+            let fetchedHealth = try await supa.fetchHealthSummaries()
+            let fetchedSchedule = try await supa.fetchScheduleSummaries()
+            let fetchedCheckIns = try await supa.fetchCheckIns()
+
+            if !fetchedHealth.isEmpty {
+                healthHistory = fetchedHealth
+                if let latest = fetchedHealth.last {
+                    healthSummary = latest
+                }
+            }
+            if !fetchedSchedule.isEmpty {
+                scheduleHistory = fetchedSchedule
+                if let latest = fetchedSchedule.last {
+                    scheduleSummary = latest
+                }
+            }
+            if !fetchedCheckIns.isEmpty {
+                checkInHistory = fetchedCheckIns
+            }
+
+            dashboardFactors = Self.makeFallbackFactors(from: healthSummary, schedule: scheduleSummary)
+
+            do {
+                let targetDate = scheduleSummary.date
+                let analysis = try await supa.analyzeStress(for: targetDate)
+                prediction = analysis.prediction
+                if !analysis.recommendations.isEmpty {
+                    recommendations = analysis.recommendations
+                }
+                if let fs = analysis.factorScores {
+                    dashboardFactors = Self.makeDashboardFactors(
+                        from: fs,
+                        health: healthSummary,
+                        schedule: scheduleSummary
+                    )
+                }
+            } catch {
+                let features = makeFeatures(from: healthSummary, schedule: scheduleSummary)
+                if let localPrediction = try? await predictionService.predict(from: features) {
+                    prediction = localPrediction
+                    recommendations = recommendationService.recommendations(for: localPrediction, features: features)
+                }
+            }
+
+            backendStatus = .connected
+        } catch {
+            backendStatus = .localOnly("Could not load existing data: \(error.localizedDescription)")
+        }
+    }
+
     func advanceFromWelcome() {
-        onboardingStep = .permissions
+        onboardingStep = .authentication
+    }
+
+    func signUpWithEmail(name: String, email: String, password: String) {
+        Task {
+            guard let supabaseService else {
+                errorMessage = "Supabase is not configured. Add SUPABASE_URL and SUPABASE_ANON_KEY."
+                return
+            }
+
+            isAuthenticating = true
+            errorMessage = nil
+
+            do {
+                try await supabaseService.signUp(email: email, password: password)
+                try await supabaseService.upsertProfile(
+                    reminderTime: reminderTime.formatted(date: .omitted, time: .shortened),
+                    preferredInterventionStyle: communicationStyle.rawValue,
+                    userName: name,
+                    email: email,
+                    password: password
+                )
+                accountName = name
+                accountEmail = email
+                accountPassword = password
+                hasAttemptedBackendSignIn = true
+                backendStatus = .connected
+                onboardingStep = .permissions
+            } catch {
+                backendStatus = .localOnly("Account creation failed: \(error.localizedDescription)")
+                errorMessage = error.localizedDescription
+            }
+
+            isAuthenticating = false
+        }
+    }
+
+    func signInWithEmail(email: String, password: String) {
+        Task {
+            guard let supabaseService else {
+                errorMessage = "Supabase is not configured. Add SUPABASE_URL and SUPABASE_ANON_KEY."
+                return
+            }
+
+            isAuthenticating = true
+            errorMessage = nil
+
+            do {
+                try await supabaseService.signIn(email: email, password: password)
+                accountEmail = email
+                accountPassword = password
+                hasAttemptedBackendSignIn = true
+                backendStatus = .connected
+                onboardingStep = .permissions
+            } catch {
+                backendStatus = .localOnly("Log in failed: \(error.localizedDescription)")
+                errorMessage = error.localizedDescription
+            }
+
+            isAuthenticating = false
+        }
     }
 
     func continueFromPermissions() {
@@ -391,6 +521,10 @@ final class MindMarginAppModel: ObservableObject {
 
     func dismissError() {
         errorMessage = nil
+    }
+
+    func dismissHealthPermissionHelpMessage() {
+        healthPermissionHelpMessage = nil
     }
 
     func signInWithApple(idToken: String, rawNonce: String?) async {
@@ -444,9 +578,24 @@ final class MindMarginAppModel: ObservableObject {
     func grantHealthAccess() {
         Task {
             do {
+                let stateBeforeRequest = await healthKitClient.authorizationState()
+                if stateBeforeRequest == .denied {
+                    healthPermissionHelpMessage = "Health access is managed in the Health app, not the Settings app. Open Health > Sharing > Apps > MindMargin and allow the data types there."
+                    errorMessage = nil
+                    return
+                }
+                if stateBeforeRequest == .unavailable {
+                    healthPermissionHelpMessage = "Health data is not available on this device. Test Health access on an iPhone with the Health app enabled."
+                    errorMessage = nil
+                    return
+                }
                 try await healthKitClient.requestAuthorization()
-                isHealthAuthorized = true
-                await refreshForecast()
+                await refreshAuthorizationStates()
+                if permissionsReady {
+                    await refreshForecast()
+                } else if healthAuthorizationState == .denied {
+                    healthPermissionHelpMessage = "Health access is still off. Open Health > Sharing > Apps > MindMargin and enable the requested categories."
+                }
             } catch {
                 errorMessage = error.localizedDescription
             }
@@ -456,9 +605,17 @@ final class MindMarginAppModel: ObservableObject {
     func grantCalendarAccess() {
         Task {
             do {
+                if calendarClient.authorizationState() == .denied {
+                    openAppSettings()
+                    return
+                }
                 try await calendarClient.requestAccess()
-                isCalendarAuthorized = true
-                await refreshForecast()
+                await refreshAuthorizationStates()
+                if permissionsReady {
+                    await refreshForecast()
+                } else if calendarAuthorizationState == .denied {
+                    errorMessage = "Calendar access is still off. Enable it in the Settings app to use live schedule data."
+                }
             } catch {
                 errorMessage = error.localizedDescription
             }
@@ -522,54 +679,64 @@ final class MindMarginAppModel: ObservableObject {
         isRefreshingForecast = true
         errorMessage = nil
 
-        do {
-            healthSummary = try await healthKitClient.fetchLatestSummary()
-            scheduleSummary = try await calendarClient.fetchTomorrowSummary()
-            append(healthSummary)
-            append(scheduleSummary)
+        if permissionsReady {
+            do {
+                healthSummary = try await healthKitClient.fetchLatestSummary()
+                scheduleSummary = try await calendarClient.fetchTomorrowSummary()
+                append(healthSummary)
+                append(scheduleSummary)
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+        }
 
-            let features = makeFeatures(from: healthSummary, schedule: scheduleSummary)
-            let localPrediction = try await predictionService.predict(from: features)
-            let localRecommendations = recommendationService.recommendations(for: localPrediction, features: features)
-
+        let features = makeFeatures(from: healthSummary, schedule: scheduleSummary)
+        if let localPrediction = try? await predictionService.predict(from: features) {
             prediction = localPrediction
-            recommendations = localRecommendations
-            dashboardFactors = Self.makeFallbackFactors(from: healthSummary, schedule: scheduleSummary)
+            recommendations = recommendationService.recommendations(for: localPrediction, features: features)
+        }
+        dashboardFactors = Self.makeFallbackFactors(from: healthSummary, schedule: scheduleSummary)
 
-            if let supabaseService {
-                do {
-                    try await connectBackendIfNeeded()
+        if let supabaseService {
+            do {
+                try await connectBackendIfNeeded()
 
-                    if supabaseService.isAuthenticated {
-                        try await supabaseService.syncHealthSummary(healthSummary)
-                        try await supabaseService.syncScheduleSummary(scheduleSummary)
+                if supabaseService.isAuthenticated {
+                    if permissionsReady {
+                        try? await supabaseService.syncHealthSummary(healthSummary)
+                        try? await supabaseService.syncScheduleSummary(scheduleSummary)
+                    }
 
-                        let events = try await calendarClient.fetchTomorrowEvents()
-                        let analysis = try await supabaseService.analyzeStress(for: scheduleSummary.date, calendarEvents: events)
+                    var events: [SupabaseService.CalendarEventPayload] = []
+                    if permissionsReady {
+                        events = (try? await calendarClient.fetchTomorrowEvents()) ?? []
+                    }
 
-                        prediction = analysis.prediction
-                        recommendations = analysis.recommendations.isEmpty ? localRecommendations : analysis.recommendations
+                    let analysis = try await supabaseService.analyzeStress(for: scheduleSummary.date, calendarEvents: events)
+
+                    prediction = analysis.prediction
+                    if !analysis.recommendations.isEmpty {
+                        recommendations = analysis.recommendations
+                    }
+                    if let fs = analysis.factorScores {
                         dashboardFactors = Self.makeDashboardFactors(
-                            from: analysis.factorScores,
+                            from: fs,
                             health: healthSummary,
                             schedule: scheduleSummary
                         )
-                        healthHistory = try await supabaseService.fetchHealthSummaries()
-                        scheduleHistory = try await supabaseService.fetchScheduleSummaries()
-                        checkInHistory = try await supabaseService.fetchCheckIns()
-                        backendStatus = .connected
                     }
-                } catch {
-                    backendStatus = .localOnly("Using local prediction only because Supabase sync failed: \(error.localizedDescription)")
-                    errorMessage = error.localizedDescription
+                    healthHistory = try await supabaseService.fetchHealthSummaries()
+                    scheduleHistory = try await supabaseService.fetchScheduleSummaries()
+                    checkInHistory = try await supabaseService.fetchCheckIns()
+                    backendStatus = .connected
                 }
+            } catch {
+                backendStatus = .localOnly("Using local prediction only because Supabase sync failed: \(error.localizedDescription)")
+                errorMessage = error.localizedDescription
             }
-
-            ensureLocalHistoriesExist()
-        } catch {
-            errorMessage = error.localizedDescription
         }
 
+        ensureLocalHistoriesExist()
         isRefreshingForecast = false
     }
 
@@ -591,10 +758,26 @@ final class MindMarginAppModel: ObservableObject {
         }
 
         guard !hasAttemptedBackendSignIn else { return }
-        hasAttemptedBackendSignIn = true
         backendStatus = .connecting
-        try await supabaseService.signInAnonymouslyIfNeeded()
-        backendStatus = .connected
+        do {
+            try await supabaseService.signInAnonymouslyIfNeeded()
+            hasAttemptedBackendSignIn = true
+            backendStatus = .connected
+        } catch {
+            throw error
+        }
+    }
+
+    private func refreshAuthorizationStates() async {
+        healthAuthorizationState = await healthKitClient.authorizationState()
+        calendarAuthorizationState = calendarClient.authorizationState()
+        isHealthAuthorized = healthAuthorizationState == .authorized
+        isCalendarAuthorized = calendarAuthorizationState == .authorized
+    }
+
+    private func openAppSettings() {
+        guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
+        UIApplication.shared.open(url)
     }
 
     private func syncProfilePreferences() async {
@@ -605,7 +788,10 @@ final class MindMarginAppModel: ObservableObject {
             guard supabaseService.isAuthenticated else { return }
             try await supabaseService.upsertProfile(
                 reminderTime: reminderTime.formatted(date: .omitted, time: .shortened),
-                preferredInterventionStyle: communicationStyle.rawValue
+                preferredInterventionStyle: communicationStyle.rawValue,
+                userName: accountName.isEmpty ? nil : accountName,
+                email: accountEmail.isEmpty ? nil : accountEmail,
+                password: accountPassword.isEmpty ? nil : accountPassword
             )
             backendStatus = .connected
         } catch {
