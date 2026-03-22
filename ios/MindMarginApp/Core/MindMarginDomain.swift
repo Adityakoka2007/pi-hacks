@@ -105,6 +105,11 @@ extension Recommendation {
     static let sampleData: [Recommendation] = []
 }
 
+enum RecommendationFeedback: String, Codable {
+    case yes
+    case no
+}
+
 protocol StressPredicting {
     func predict(from features: StressFeatures) async throws -> StressPrediction
 }

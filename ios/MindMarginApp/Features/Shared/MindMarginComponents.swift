@@ -215,8 +215,9 @@ struct MindMarginFeatureCard: View {
 struct MindMarginRecommendationCard: View {
     let recommendation: Recommendation
     let compact: Bool
-    let isCompleted: Bool
-    let action: () -> Void
+    let feedback: RecommendationFeedback?
+    let onYes: () -> Void
+    let onNo: () -> Void
 
     var body: some View {
         let style = recommendationStyle(for: recommendation.category)
@@ -264,17 +265,40 @@ struct MindMarginRecommendationCard: View {
                     .background(Color.black.opacity(0.035), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                 }
 
-                Button(action: action) {
-                    Text(isCompleted ? "Done" : "Mark as done")
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Was it helpful?")
                         .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.white)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 14)
-                        .background(isCompleted ? MindMarginTheme.green : Color.black.opacity(0.88), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                        .foregroundStyle(MindMarginTheme.textPrimary)
+
+                    HStack(spacing: 10) {
+                        feedbackButton(title: "Yes", feedbackValue: .yes, tint: MindMarginTheme.green, action: onYes)
+                        feedbackButton(title: "No", feedbackValue: .no, tint: MindMarginTheme.red, action: onNo)
+                    }
                 }
-                .buttonStyle(.plain)
             }
         }
+    }
+
+    @ViewBuilder
+    private func feedbackButton(title: String, feedbackValue: RecommendationFeedback, tint: Color, action: @escaping () -> Void) -> some View {
+        let isSelected = feedback == feedbackValue
+
+        Button(action: action) {
+            Text(title)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(isSelected ? .white : tint)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 14)
+                .background(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .fill(isSelected ? tint : tint.opacity(0.1))
+                )
+                .overlay {
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .stroke(isSelected ? tint : tint.opacity(0.28), lineWidth: 1)
+                }
+        }
+        .buttonStyle(.plain)
     }
 }
 

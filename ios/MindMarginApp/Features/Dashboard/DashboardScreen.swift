@@ -62,10 +62,14 @@ struct DashboardScreen: View {
                         MindMarginRecommendationCard(
                             recommendation: recommendation,
                             compact: true,
-                            isCompleted: appModel.isRecommendationCompleted(recommendation)
-                        ) {
-                            appModel.toggleRecommendation(recommendation)
-                        }
+                            feedback: appModel.recommendationFeedback(for: recommendation),
+                            onYes: {
+                                appModel.setRecommendationFeedback(.yes, for: recommendation)
+                            },
+                            onNo: {
+                                appModel.setRecommendationFeedback(.no, for: recommendation)
+                            }
+                        )
                     }
                 }
                 .padding(.bottom, 12)
@@ -298,10 +302,14 @@ struct ActionPlanScreen: View {
                     MindMarginRecommendationCard(
                         recommendation: recommendation,
                         compact: false,
-                        isCompleted: appModel.isRecommendationCompleted(recommendation)
-                    ) {
-                        appModel.toggleRecommendation(recommendation)
-                    }
+                        feedback: appModel.recommendationFeedback(for: recommendation),
+                        onYes: {
+                            appModel.setRecommendationFeedback(.yes, for: recommendation)
+                        },
+                        onNo: {
+                            appModel.setRecommendationFeedback(.no, for: recommendation)
+                        }
+                    )
                 }
             }
             .padding(.horizontal, 24)

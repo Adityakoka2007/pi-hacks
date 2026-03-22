@@ -139,6 +139,20 @@ final class SupabaseService {
         }
     }
 
+    struct RecommendationFeedbackPayload: Encodable {
+        let recommendationID: UUID
+        let title: String
+        let category: String
+        let wasHelpful: Bool
+
+        enum CodingKeys: String, CodingKey {
+            case recommendationID = "recommendation_id"
+            case title
+            case category
+            case wasHelpful = "was_helpful"
+        }
+    }
+
     private struct HealthSummaryPayload: Encodable {
         let summaryDate: String
         let sleepHours: Double?
@@ -190,10 +204,12 @@ final class SupabaseService {
     private struct AnalyzeStressPayload: Encodable {
         let targetDate: String
         let calendarEvents: [CalendarEventPayload]?
+        let recommendationFeedback: [RecommendationFeedbackPayload]?
 
         enum CodingKeys: String, CodingKey {
             case targetDate = "target_date"
             case calendarEvents = "calendar_events"
+            case recommendationFeedback = "recommendation_feedback"
         }
     }
 
@@ -607,7 +623,8 @@ final class SupabaseService {
 
     func analyzeStress(
         for date: Date,
-        calendarEvents: [CalendarEventPayload] = []
+        calendarEvents: [CalendarEventPayload] = [],
+        recommendationFeedback: [RecommendationFeedbackPayload] = []
     ) async throws -> (prediction: StressPrediction, recommendations: [Recommendation], factorScores: FactorScores?) {
         guard let token = sessionToken else {
             throw SupabaseServiceError.notAuthenticated
@@ -615,7 +632,8 @@ final class SupabaseService {
 
         let payload = AnalyzeStressPayload(
             targetDate: Self.dayFormatter.string(from: date),
-            calendarEvents: calendarEvents.isEmpty ? nil : calendarEvents
+            calendarEvents: calendarEvents.isEmpty ? nil : calendarEvents,
+            recommendationFeedback: recommendationFeedback.isEmpty ? nil : recommendationFeedback
         )
 
         let result = try await invokeFunction(

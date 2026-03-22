@@ -159,7 +159,7 @@ final class MindMarginAppModel: ObservableObject {
     @Published private(set) var healthHistory: [DailyHealthSummary] = []
     @Published private(set) var scheduleHistory: [DailyScheduleSummary] = []
     @Published private(set) var dashboardFactors: [DashboardFactor] = []
-    @Published private(set) var completedRecommendationIDs: Set<UUID> = []
+    @Published private(set) var recommendationFeedbackByID: [UUID: RecommendationFeedback] = [:]
     @Published private(set) var backendStatus: BackendStatus = .notConfigured
     @Published private(set) var errorMessage: String?
     @Published private(set) var lastSavedCheckInMessage: String?
@@ -411,7 +411,10 @@ final class MindMarginAppModel: ObservableObject {
 
             do {
                 let targetDate = scheduleSummary.date
-                let analysis = try await supa.analyzeStress(for: targetDate)
+                let analysis = try await supa.analyzeStress(
+                    for: targetDate,
+                    recommendationFeedback: makeRecommendationFeedbackPayloads()
+                )
                 prediction = analysis.prediction
                 if !analysis.recommendations.isEmpty {
                     recommendations = analysis.recommendations
@@ -677,16 +680,12 @@ final class MindMarginAppModel: ObservableObject {
         }
     }
 
-    func isRecommendationCompleted(_ recommendation: Recommendation) -> Bool {
-        completedRecommendationIDs.contains(recommendation.id)
+    func recommendationFeedback(for recommendation: Recommendation) -> RecommendationFeedback? {
+        recommendationFeedbackByID[recommendation.id]
     }
 
-    func toggleRecommendation(_ recommendation: Recommendation) {
-        if completedRecommendationIDs.contains(recommendation.id) {
-            completedRecommendationIDs.remove(recommendation.id)
-        } else {
-            completedRecommendationIDs.insert(recommendation.id)
-        }
+    func setRecommendationFeedback(_ feedback: RecommendationFeedback, for recommendation: Recommendation) {
+        recommendationFeedbackByID[recommendation.id] = feedback
     }
 
     func refreshForecast() async {
@@ -750,7 +749,11 @@ final class MindMarginAppModel: ObservableObject {
                         events = (try? await calendarClient.fetchTomorrowEvents()) ?? []
                     }
 
-                    let analysis = try await supabaseService.analyzeStress(for: scheduleSummary.date, calendarEvents: events)
+                    let analysis = try await supabaseService.analyzeStress(
+                        for: scheduleSummary.date,
+                        calendarEvents: events,
+                        recommendationFeedback: makeRecommendationFeedbackPayloads()
+                    )
 
                     prediction = analysis.prediction
                     if !analysis.recommendations.isEmpty {
@@ -834,6 +837,18 @@ final class MindMarginAppModel: ObservableObject {
             backendStatus = .connected
         } catch {
             backendStatus = .localOnly("Preferences were updated locally. Supabase profile sync failed: \(error.localizedDescription)")
+        }
+    }
+
+    private func makeRecommendationFeedbackPayloads() -> [SupabaseService.RecommendationFeedbackPayload] {
+        recommendations.compactMap { recommendation in
+            guard let feedback = recommendationFeedbackByID[recommendation.id] else { return nil }
+            return SupabaseService.RecommendationFeedbackPayload(
+                recommendationID: recommendation.id,
+                title: recommendation.title,
+                category: recommendation.category,
+                wasHelpful: feedback == .yes
+            )
         }
     }
 
