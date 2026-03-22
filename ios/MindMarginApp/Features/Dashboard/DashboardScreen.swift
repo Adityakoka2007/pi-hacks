@@ -21,7 +21,7 @@ struct DashboardScreen: View {
 
                     Button {
                         Task {
-                            await appModel.reloadFromDatabase()
+                            await appModel.refreshForecast()
                         }
                     } label: {
                         HStack(spacing: 6) {

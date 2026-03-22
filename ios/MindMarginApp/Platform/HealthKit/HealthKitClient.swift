@@ -11,6 +11,7 @@ enum PlatformAuthorizationState {
 final class HealthKitClient {
     private let healthStore = HKHealthStore()
     private let calendar = Calendar.current
+    private let heartRateUnit = HKUnit.count().unitDivided(by: .minute())
 
     private var isHealthDataAvailable: Bool {
         HKHealthStore.isHealthDataAvailable()
@@ -20,13 +21,14 @@ final class HealthKitClient {
         guard
             let sleepType = HKObjectType.categoryType(forIdentifier: .sleepAnalysis),
             let stepType = HKObjectType.quantityType(forIdentifier: .stepCount),
+            let heartRateType = HKObjectType.quantityType(forIdentifier: .heartRate),
             let restingHeartRateType = HKObjectType.quantityType(forIdentifier: .restingHeartRate),
             let hrvType = HKObjectType.quantityType(forIdentifier: .heartRateVariabilitySDNN)
         else {
             return []
         }
 
-        return [sleepType, stepType, restingHeartRateType, hrvType]
+        return [sleepType, stepType, heartRateType, restingHeartRateType, hrvType]
     }
 
     func authorizationState() async -> PlatformAuthorizationState {
@@ -34,11 +36,6 @@ final class HealthKitClient {
 
         let types = requiredReadTypes
         guard !types.isEmpty else { return .unavailable }
-
-        let statuses = types.map { healthStore.authorizationStatus(for: $0) }
-        if statuses.allSatisfy({ $0 == .sharingAuthorized }) {
-            return .authorized
-        }
 
         let requestStatus = await withCheckedContinuation { (continuation: CheckedContinuation<HKAuthorizationRequestStatus, Never>) in
             healthStore.getRequestStatusForAuthorization(toShare: [], read: Set(types)) { status, _ in
@@ -50,8 +47,8 @@ final class HealthKitClient {
         case .shouldRequest, .unknown:
             return .notDetermined
         case .unnecessary:
-            // For HealthKit read permissions, "unnecessary" commonly means the app
-            // has already completed the request flow and should proceed with queries.
+            // For read permissions this means the request flow already completed,
+            // so queries should be allowed to run and determine actual data availability.
             return .authorized
         @unknown default:
             return .notDetermined
@@ -85,7 +82,7 @@ final class HealthKitClient {
 
         let sleepHours: Double? = try? await fetchSleepHours(from: sleepWindowStart, to: sleepWindowEnd)
         let steps = (try? await fetchCumulativeQuantity(.stepCount, from: startOfToday, to: now, unit: .count())) ?? 0
-        let restingHeartRate = try? await fetchAverageQuantity(.restingHeartRate, from: rollingDayStart, to: now, unit: HKUnit.count().unitDivided(by: .minute()))
+        let restingHeartRate = try await fetchLatestHeartRateForLatestAvailableDay(referenceDate: now)
         let hrv = try? await fetchAverageQuantity(.heartRateVariabilitySDNN, from: rollingDayStart, to: now, unit: .secondUnit(with: .milli))
 
         return DailyHealthSummary(
@@ -178,6 +175,86 @@ final class HealthKitClient {
                 }
                 let value = result?.averageQuantity()?.doubleValue(for: unit)
                 continuation.resume(returning: value)
+            }
+            healthStore.execute(query)
+        }
+    }
+
+    private func fetchMostRecentQuantity(
+        _ identifier: HKQuantityTypeIdentifier,
+        from startDate: Date,
+        to endDate: Date,
+        unit: HKUnit
+    ) async throws -> Double? {
+        guard let quantityType = HKObjectType.quantityType(forIdentifier: identifier) else {
+            throw PlatformDataError.healthDataUnavailable
+        }
+
+        let predicate = HKQuery.predicateForSamples(withStart: startDate, end: endDate, options: .strictEndDate)
+        let sortDescriptor = NSSortDescriptor(key: HKSampleSortIdentifierEndDate, ascending: false)
+
+        return try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Double?, Error>) in
+            let query = HKSampleQuery(sampleType: quantityType, predicate: predicate, limit: 1, sortDescriptors: [sortDescriptor]) { _, results, error in
+                if let error {
+                    continuation.resume(throwing: error)
+                    return
+                }
+
+                let sample = (results as? [HKQuantitySample])?.first
+                continuation.resume(returning: sample?.quantity.doubleValue(for: unit))
+            }
+            healthStore.execute(query)
+        }
+    }
+
+    private func fetchLatestHeartRateForLatestAvailableDay(referenceDate: Date) async throws -> Double? {
+        guard let heartRateType = HKObjectType.quantityType(forIdentifier: .heartRate) else {
+            print("[MindMargin] Heart rate unavailable: HKQuantityTypeIdentifier.heartRate is missing on this device.")
+            throw PlatformDataError.healthDataUnavailable
+        }
+
+        let lookbackStart = calendar.date(byAdding: .day, value: -180, to: referenceDate) ?? referenceDate.addingTimeInterval(-(180 * 86_400))
+
+        do {
+            guard let latestSample = try await fetchMostRecentHeartRateSample(from: lookbackStart, to: referenceDate) else {
+                print("[MindMargin] Heart rate unavailable: no readable heart rate samples were found between \(lookbackStart) and \(referenceDate). This can mean there is no heart rate data in Health for that period, or Health has not granted this app read access to Heart Rate.")
+                return nil
+            }
+
+            let latestDay = calendar.startOfDay(for: latestSample.endDate)
+            let nextDay = calendar.date(byAdding: .day, value: 1, to: latestDay) ?? latestDay.addingTimeInterval(86_400)
+
+            guard let latestDaySample = try await fetchMostRecentHeartRateSample(from: latestDay, to: nextDay) else {
+                print("[MindMargin] Heart rate unavailable: found a latest sample at \(latestSample.endDate), but no readable sample existed within day window \(latestDay) to \(nextDay).")
+                return nil
+            }
+
+            let bpm = latestDaySample.quantity.doubleValue(for: heartRateUnit)
+            print("[MindMargin] Heart rate source day: \(latestDay). Latest day sample: \(bpm) bpm at \(latestDaySample.endDate).")
+            return bpm
+        } catch {
+            print("[MindMargin] Heart rate unavailable: HealthKit query failed with error: \(error.localizedDescription)")
+            return nil
+        }
+    }
+
+    private func fetchMostRecentHeartRateSample(from startDate: Date, to endDate: Date) async throws -> HKQuantitySample? {
+        guard let heartRateType = HKObjectType.quantityType(forIdentifier: .heartRate) else {
+            throw PlatformDataError.healthDataUnavailable
+        }
+
+        let predicate = HKQuery.predicateForSamples(withStart: startDate, end: endDate, options: [])
+        let sortDescriptor = NSSortDescriptor(key: HKSampleSortIdentifierEndDate, ascending: false)
+
+        return try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<HKQuantitySample?, Error>) in
+            let query = HKSampleQuery(sampleType: heartRateType, predicate: predicate, limit: 1, sortDescriptors: [sortDescriptor]) { _, results, error in
+                if let error {
+                    continuation.resume(throwing: error)
+                    return
+                }
+
+                let sample = (results as? [HKQuantitySample])?.first
+                continuation.resume(returning: sample)
             }
             healthStore.execute(query)
         }

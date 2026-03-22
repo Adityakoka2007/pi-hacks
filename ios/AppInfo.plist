@@ -19,5 +19,11 @@
 	<string>sb_publishable_u4a2xvCABNp8qjNFstYt2g_9m8sMKu0</string>
 	<key>SUPABASE_URL</key>
 	<string>https://atevlpshdxlhxdnvovuy.supabase.co</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>remote-notification</string>
+		<string>fetch</string>
+		<string>processing</string>
+	</array>
 </dict>
 </plist>
