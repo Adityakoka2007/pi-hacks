@@ -10,12 +10,13 @@ final class StressNotificationManager: NSObject, ObservableObject {
 
     @Published private(set) var permissionStatus: UNAuthorizationStatus = .notDetermined
 
+    private var pendingDeviceTokenData: Data?
+
     private override init() {
         super.init()
         UNUserNotificationCenter.current().delegate = self
+        Task { await refreshPermissionStatus() }
     }
-
-    // MARK: - Permission
 
     func requestPermission() async {
         do {
@@ -23,7 +24,7 @@ final class StressNotificationManager: NSObject, ObservableObject {
                 .requestAuthorization(options: [.alert, .sound, .badge])
             await refreshPermissionStatus()
             if granted {
-                await UIApplication.shared.registerForRemoteNotifications()
+                UIApplication.shared.registerForRemoteNotifications()
             }
         } catch {
             await refreshPermissionStatus()
@@ -39,24 +40,28 @@ final class StressNotificationManager: NSObject, ObservableObject {
         permissionStatus == .authorized || permissionStatus == .provisional
     }
 
-    // MARK: - Device token upload
+    func handleDeviceTokenRegistration(_ tokenData: Data, supabaseService: SupabaseService?) async {
+        pendingDeviceTokenData = tokenData
+        await syncPendingDeviceTokenIfPossible(using: supabaseService)
+    }
 
-    func uploadDeviceToken(_ tokenData: Data, supabaseService: SupabaseService) async {
+    func syncPendingDeviceTokenIfPossible(using supabaseService: SupabaseService?) async {
+        guard let tokenData = pendingDeviceTokenData else { return }
+        guard let supabaseService, supabaseService.isAuthenticated, let userId = supabaseService.userId else { return }
+
         let token = tokenData.map { String(format: "%02x", $0) }.joined()
-
-        guard supabaseService.isAuthenticated,
-              let userId = supabaseService.userId else { return }
 
         do {
             try await supabaseService.upsertDeviceToken(userId: userId, token: token)
+            pendingDeviceTokenData = nil
         } catch {
             print("[MindMargin] Device token upload failed: \(error.localizedDescription)")
         }
     }
 
-    // MARK: - Local stress spike notification
-
     func postLocalSpikeNotification(score: Double, riskLevel: String) {
+        guard isPermissionGranted else { return }
+
         let content = UNMutableNotificationContent()
         content.title = "Stress Spike Detected"
         content.body = "Your stress score jumped to \(Int(score))/10 (\(riskLevel) risk). Tap to see your action plan."
@@ -72,8 +77,6 @@ final class StressNotificationManager: NSObject, ObservableObject {
         UNUserNotificationCenter.current().add(request)
     }
 }
-
-// MARK: - UNUserNotificationCenterDelegate
 
 extension StressNotificationManager: UNUserNotificationCenterDelegate {
 

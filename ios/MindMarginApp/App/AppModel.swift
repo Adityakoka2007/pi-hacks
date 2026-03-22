@@ -379,6 +379,7 @@ final class MindMarginAppModel: ObservableObject {
         }
 
         if let supabaseService, supabaseService.isAuthenticated {
+            await StressNotificationManager.shared.syncPendingDeviceTokenIfPossible(using: supabaseService)
             await loadExistingDataFromBackend(supabaseService)
         }
 
@@ -480,6 +481,7 @@ final class MindMarginAppModel: ObservableObject {
                 accountPassword = password
                 hasAttemptedBackendSignIn = true
                 backendStatus = .connected
+                await StressNotificationManager.shared.syncPendingDeviceTokenIfPossible(using: supabaseService)
                 onboardingStep = permissionsReady ? .complete : .permissions
                 if permissionsReady {
                     await syncProfilePreferences()
@@ -509,6 +511,7 @@ final class MindMarginAppModel: ObservableObject {
                 accountPassword = password
                 hasAttemptedBackendSignIn = true
                 backendStatus = .connected
+                await StressNotificationManager.shared.syncPendingDeviceTokenIfPossible(using: supabaseService)
                 onboardingStep = permissionsReady ? .complete : .permissions
                 if permissionsReady {
                     await syncProfilePreferences()
@@ -561,6 +564,7 @@ final class MindMarginAppModel: ObservableObject {
             try await supabaseService.signInWithApple(idToken: idToken, rawNonce: rawNonce)
             hasAttemptedBackendSignIn = true
             backendStatus = .connected
+            await StressNotificationManager.shared.syncPendingDeviceTokenIfPossible(using: supabaseService)
             await refreshForecast()
         } catch {
             backendStatus = .localOnly("Sign in failed: \(error.localizedDescription)")
@@ -578,6 +582,7 @@ final class MindMarginAppModel: ObservableObject {
             try await supabaseService.signInWithGoogle()
             hasAttemptedBackendSignIn = true
             backendStatus = .connected
+            await StressNotificationManager.shared.syncPendingDeviceTokenIfPossible(using: supabaseService)
             await refreshForecast()
         } catch {
             let ns = error as NSError
