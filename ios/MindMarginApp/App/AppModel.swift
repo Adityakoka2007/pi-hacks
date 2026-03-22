@@ -307,6 +307,7 @@ final class MindMarginAppModel: ObservableObject {
     @Published private(set) var submittedRecommendationFeedbackByID: [UUID: RecommendationFeedback] = [:]
     @Published private(set) var backendStatus: BackendStatus = .notConfigured
     @Published private(set) var errorMessage: String?
+    @Published private(set) var authErrorMessage: String?
     @Published private(set) var lastSavedCheckInMessage: String?
     @Published private(set) var healthPermissionHelpMessage: String?
     @Published private(set) var isAuthenticating = false
@@ -635,13 +636,7 @@ final class MindMarginAppModel: ObservableObject {
             }
 
             isAuthenticating = true
-            errorMessage = nil
-
-            guard isValidEmail(email) else {
-                errorMessage = "Enter a valid email address."
-                isAuthenticating = false
-                return
-            }
+            authErrorMessage = nil
 
             do {
                 try await supabaseService.signUp(email: email, password: password)
@@ -666,9 +661,9 @@ final class MindMarginAppModel: ObservableObject {
             } catch {
                 let message = (error as? SupabaseServiceError)?.errorDescription ?? error.localizedDescription
                 if message.contains("email_exists") || message.localizedCaseInsensitiveContains("already") || message.localizedCaseInsensitiveContains("registered") {
-                    errorMessage = "An account with this email already exists. Log in instead."
+                    authErrorMessage = "Email already exists"
                 } else {
-                    errorMessage = nil
+                    authErrorMessage = nil
                 }
             }
 
@@ -683,13 +678,7 @@ final class MindMarginAppModel: ObservableObject {
             }
 
             isAuthenticating = true
-            errorMessage = nil
-
-            guard isValidEmail(email) else {
-                errorMessage = "Enter a valid email address."
-                isAuthenticating = false
-                return
-            }
+            authErrorMessage = nil
 
             do {
                 try await supabaseService.signIn(email: email, password: password)
@@ -703,7 +692,7 @@ final class MindMarginAppModel: ObservableObject {
                     await syncProfilePreferences()
                 }
             } catch {
-                errorMessage = "Invalid email or password."
+                authErrorMessage = "Invalid email or password."
             }
 
             isAuthenticating = false
@@ -756,6 +745,7 @@ final class MindMarginAppModel: ObservableObject {
 
     func dismissError() {
         errorMessage = nil
+        authErrorMessage = nil
     }
 
     func dismissHealthPermissionHelpMessage() {
@@ -896,6 +886,12 @@ final class MindMarginAppModel: ObservableObject {
             isSubmittingCheckIn = false
             lastSavedCheckInMessage = "Today's check-in was saved. Forecast updated."
             notes = ""
+        }
+    }
+
+    func previewForecastFromCurrentCheckIn() {
+        Task {
+            await refreshDraftForecast()
         }
     }
 
@@ -1159,15 +1155,20 @@ final class MindMarginAppModel: ObservableObject {
         }
     }
 
-    private func isValidEmail(_ email: String) -> Bool {
-        let trimmed = email.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty, !trimmed.contains(" ") else { return false }
-        let pattern = #"^[^@\s]+@[^@\s]+\.[^@\s]+$"#
-        return trimmed.range(of: pattern, options: .regularExpression) != nil
-    }
+    private func makeFeatures(
+        from health: DailyHealthSummary,
+        schedule: DailyScheduleSummary,
+        draftCheckIn: StressCheckIn? = nil
+    ) -> StressFeatures {
+        let stressHistoryForPrediction: [StressCheckIn]
+        if let draftCheckIn {
+            let filtered = checkInHistory.filter { !Calendar.current.isDate($0.date, inSameDayAs: draftCheckIn.date) }
+            stressHistoryForPrediction = (filtered + [draftCheckIn]).sorted { $0.date < $1.date }
+        } else {
+            stressHistoryForPrediction = checkInHistory
+        }
 
-    private func makeFeatures(from health: DailyHealthSummary, schedule: DailyScheduleSummary) -> StressFeatures {
-        let recentAverage = checkInHistory
+        let recentAverage = stressHistoryForPrediction
             .suffix(5)
             .map(\.stressLevel)
             .average
@@ -1188,8 +1189,39 @@ final class MindMarginAppModel: ObservableObject {
             sleepRegularityScore: sleepRegularityScore,
             activityTrendScore: activityTrendScore,
             scheduleIntensityScore: scheduleIntensityScore,
-            recentStressAverage: recentAverage
+            recentStressAverage: recentAverage,
+            currentStressLevel: draftCheckIn?.stressLevel,
+            currentEnergyLevel: draftCheckIn?.energyLevel
         )
+    }
+
+    private func refreshDraftForecast() async {
+        let draftCheckIn = StressCheckIn(
+            id: UUID(),
+            date: .now,
+            stressLevel: stressLevel,
+            energyLevel: energyLevel,
+            caffeineServings: caffeineServings,
+            helpfulYesterday: helpfulYesterday,
+            notes: nil
+        )
+
+        let features = makeFeatures(from: healthSummary, schedule: scheduleSummary, draftCheckIn: draftCheckIn)
+        if let localPrediction = try? await predictionService.predict(from: features) {
+            prediction = localPrediction
+            recommendations = recommendationService.recommendations(for: localPrediction, features: features)
+            scheduleDisplayBlocks = Self.makeScheduleDisplayBlocks(
+                from: scheduleDisplayBlocks.filter { $0.kind == .event }.map {
+                    SupabaseService.CalendarEventPayload(
+                        title: $0.title,
+                        startTime: $0.startLabel,
+                        endTime: $0.endLabel,
+                        isBackToBack: $0.subtitle == "Back-to-back commitment"
+                    )
+                },
+                recommendations: recommendations
+            )
+        }
     }
 
     private func append(_ summary: DailyHealthSummary) {

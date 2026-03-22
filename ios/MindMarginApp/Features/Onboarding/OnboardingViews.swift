@@ -75,7 +75,7 @@ private struct WelcomeScreen: View {
                 Spacer(minLength: 36)
 
                 VStack(spacing: 14) {
-                    MindMarginFeatureCard(symbolName: "arrow.up.right", title: "Early prediction", description: "Know tomorrow's stress risk before it arrives.")
+                    MindMarginFeatureCard(symbolName: "arrow.up.right", title: "Stress evaluation", description: "Check your stress level before the day unfolds.")
                     MindMarginFeatureCard(symbolName: "sparkles", title: "Clear explanations", description: "See what is driving your risk levels and where to intervene.")
                     MindMarginFeatureCard(symbolName: "lock.shield", title: "Privacy-first", description: "Your health and schedule signals stay on-device while you test the experience.")
                 }
@@ -188,7 +188,7 @@ private struct AuthenticationScreen: View {
                                 .font(.subheadline.weight(.semibold))
                                 .foregroundStyle(MindMarginTheme.textPrimary)
 
-                            TextField("you@example.com", text: $appModel.accountEmail)
+                            TextField("Enter your email", text: $appModel.accountEmail)
                                 .keyboardType(.emailAddress)
                                 .textInputAutocapitalization(.never)
                                 .autocorrectionDisabled()
@@ -227,7 +227,7 @@ private struct AuthenticationScreen: View {
                             .foregroundStyle(MindMarginTheme.textSecondary)
                             .fixedSize(horizontal: false, vertical: true)
 
-                        if let errorMessage = appModel.errorMessage {
+                        if let errorMessage = appModel.authErrorMessage {
                             Text(errorMessage)
                                 .font(.footnote)
                                 .foregroundStyle(MindMarginTheme.red)
@@ -250,6 +250,7 @@ private struct AuthenticationScreen: View {
 
                 Button(secondaryButtonTitle) {
                     mode = mode == .signUp ? .signIn : .signUp
+                    appModel.dismissError()
                 }
                 .buttonStyle(.plain)
                 .font(.headline)

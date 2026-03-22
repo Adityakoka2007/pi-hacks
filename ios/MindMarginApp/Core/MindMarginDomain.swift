@@ -60,6 +60,8 @@ struct StressFeatures: Codable {
     let activityTrendScore: Double
     let scheduleIntensityScore: Double
     let recentStressAverage: Double
+    let currentStressLevel: Int?
+    let currentEnergyLevel: Int?
 }
 
 struct StressPrediction: Codable {
@@ -141,6 +143,16 @@ struct RuleBasedStressPredictor: StressPredicting {
         if features.recentStressAverage >= 4 {
             score += 0.18
             factors.append("Recent check-ins still show elevated stress.")
+        }
+
+        if let currentStressLevel = features.currentStressLevel, currentStressLevel >= 4 {
+            score += 0.14
+            factors.append("Today's check-in shows elevated stress.")
+        }
+
+        if let currentEnergyLevel = features.currentEnergyLevel, currentEnergyLevel <= 2 {
+            score += 0.12
+            factors.append("Low energy today increases the chance of overload.")
         }
 
         if features.sleepRegularityScore < 0.65 {
@@ -235,4 +247,3 @@ struct RecommendationEngine: RecommendationProviding {
         return items
     }
 }
-

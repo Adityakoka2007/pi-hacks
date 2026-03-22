@@ -139,6 +139,12 @@ struct CheckInScreen: View {
             .padding(.horizontal, 24)
             .padding(.top, 20)
         }
+        .onChange(of: appModel.stressLevel) { _, _ in
+            appModel.previewForecastFromCurrentCheckIn()
+        }
+        .onChange(of: appModel.energyLevel) { _, _ in
+            appModel.previewForecastFromCurrentCheckIn()
+        }
     }
 
     private func stepperButton(symbol: String, action: @escaping () -> Void) -> some View {
