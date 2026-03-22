@@ -605,6 +605,20 @@ final class SupabaseService {
         try await invokeFunction(named: "upsert-schedule", payload: payload, token: token)
     }
 
+    func upsertDeviceToken(userId: String, token: String) async throws {
+        guard let sessionToken else {
+            throw SupabaseServiceError.notAuthenticated
+        }
+
+        let payload: [String: String] = [
+            "user_id": userId,
+            "token": token,
+            "updated_at": ISO8601DateFormatter().string(from: Date()),
+        ]
+
+        try await upsert(table: "device_tokens", payload: payload, token: sessionToken, conflictColumns: "user_id,token")
+    }
+
     func syncCheckIn(_ checkIn: StressCheckIn) async throws {
         guard let token = sessionToken else {
             throw SupabaseServiceError.notAuthenticated
