@@ -159,7 +159,8 @@ final class MindMarginAppModel: ObservableObject {
     @Published private(set) var healthHistory: [DailyHealthSummary] = []
     @Published private(set) var scheduleHistory: [DailyScheduleSummary] = []
     @Published private(set) var dashboardFactors: [DashboardFactor] = []
-    @Published private(set) var recommendationFeedbackByID: [UUID: RecommendationFeedback] = [:]
+    @Published private(set) var recommendationFeedbackDraftByID: [UUID: RecommendationFeedback] = [:]
+    @Published private(set) var submittedRecommendationFeedbackByID: [UUID: RecommendationFeedback] = [:]
     @Published private(set) var backendStatus: BackendStatus = .notConfigured
     @Published private(set) var errorMessage: String?
     @Published private(set) var lastSavedCheckInMessage: String?
@@ -691,12 +692,34 @@ final class MindMarginAppModel: ObservableObject {
         }
     }
 
-    func recommendationFeedback(for recommendation: Recommendation) -> RecommendationFeedback? {
-        recommendationFeedbackByID[recommendation.id]
+    func recommendationFeedbackDraft(for recommendation: Recommendation) -> RecommendationFeedback? {
+        recommendationFeedbackDraftByID[recommendation.id]
+            ?? submittedRecommendationFeedbackByID[recommendation.id]
     }
 
-    func setRecommendationFeedback(_ feedback: RecommendationFeedback, for recommendation: Recommendation) {
-        recommendationFeedbackByID[recommendation.id] = feedback
+    func submittedRecommendationFeedback(for recommendation: Recommendation) -> RecommendationFeedback? {
+        submittedRecommendationFeedbackByID[recommendation.id]
+    }
+
+    func selectRecommendationFeedback(_ feedback: RecommendationFeedback, for recommendation: Recommendation) {
+        recommendationFeedbackDraftByID[recommendation.id] = feedback
+    }
+
+    func canSubmitRecommendationFeedback(for recommendation: Recommendation) -> Bool {
+        guard let draft = recommendationFeedbackDraftByID[recommendation.id]
+            ?? submittedRecommendationFeedbackByID[recommendation.id] else {
+            return false
+        }
+        return submittedRecommendationFeedbackByID[recommendation.id] != draft
+    }
+
+    func submitRecommendationFeedback(for recommendation: Recommendation) {
+        guard let feedback = recommendationFeedbackDraftByID[recommendation.id]
+            ?? submittedRecommendationFeedbackByID[recommendation.id] else {
+            return
+        }
+        submittedRecommendationFeedbackByID[recommendation.id] = feedback
+        recommendationFeedbackDraftByID[recommendation.id] = feedback
     }
 
     func refreshForecast() async {
@@ -853,7 +876,7 @@ final class MindMarginAppModel: ObservableObject {
 
     private func makeRecommendationFeedbackPayloads() -> [SupabaseService.RecommendationFeedbackPayload] {
         recommendations.compactMap { recommendation in
-            guard let feedback = recommendationFeedbackByID[recommendation.id] else { return nil }
+            guard let feedback = submittedRecommendationFeedbackByID[recommendation.id] else { return nil }
             return SupabaseService.RecommendationFeedbackPayload(
                 recommendationID: recommendation.id,
                 title: recommendation.title,

@@ -62,12 +62,17 @@ struct DashboardScreen: View {
                         MindMarginRecommendationCard(
                             recommendation: recommendation,
                             compact: true,
-                            feedback: appModel.recommendationFeedback(for: recommendation),
+                            selectedFeedback: appModel.recommendationFeedbackDraft(for: recommendation),
+                            submittedFeedback: appModel.submittedRecommendationFeedback(for: recommendation),
+                            canSubmit: appModel.canSubmitRecommendationFeedback(for: recommendation),
                             onYes: {
-                                appModel.setRecommendationFeedback(.yes, for: recommendation)
+                                appModel.selectRecommendationFeedback(.yes, for: recommendation)
                             },
                             onNo: {
-                                appModel.setRecommendationFeedback(.no, for: recommendation)
+                                appModel.selectRecommendationFeedback(.no, for: recommendation)
+                            },
+                            onSubmit: {
+                                appModel.submitRecommendationFeedback(for: recommendation)
                             }
                         )
                     }
@@ -302,12 +307,17 @@ struct ActionPlanScreen: View {
                     MindMarginRecommendationCard(
                         recommendation: recommendation,
                         compact: false,
-                        feedback: appModel.recommendationFeedback(for: recommendation),
+                        selectedFeedback: appModel.recommendationFeedbackDraft(for: recommendation),
+                        submittedFeedback: appModel.submittedRecommendationFeedback(for: recommendation),
+                        canSubmit: appModel.canSubmitRecommendationFeedback(for: recommendation),
                         onYes: {
-                            appModel.setRecommendationFeedback(.yes, for: recommendation)
+                            appModel.selectRecommendationFeedback(.yes, for: recommendation)
                         },
                         onNo: {
-                            appModel.setRecommendationFeedback(.no, for: recommendation)
+                            appModel.selectRecommendationFeedback(.no, for: recommendation)
+                        },
+                        onSubmit: {
+                            appModel.submitRecommendationFeedback(for: recommendation)
                         }
                     )
                 }

@@ -215,9 +215,12 @@ struct MindMarginFeatureCard: View {
 struct MindMarginRecommendationCard: View {
     let recommendation: Recommendation
     let compact: Bool
-    let feedback: RecommendationFeedback?
+    let selectedFeedback: RecommendationFeedback?
+    let submittedFeedback: RecommendationFeedback?
+    let canSubmit: Bool
     let onYes: () -> Void
     let onNo: () -> Void
+    let onSubmit: () -> Void
 
     var body: some View {
         let style = recommendationStyle(for: recommendation.category)
@@ -274,6 +277,26 @@ struct MindMarginRecommendationCard: View {
                         feedbackButton(title: "Yes", feedbackValue: .yes, tint: MindMarginTheme.green, action: onYes)
                         feedbackButton(title: "No", feedbackValue: .no, tint: MindMarginTheme.red, action: onNo)
                     }
+
+                    Button(action: onSubmit) {
+                        Text("Submit")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 14)
+                            .background(
+                                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                    .fill(canSubmit ? Color.black.opacity(0.88) : Color.black.opacity(0.18))
+                            )
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(!canSubmit)
+
+                    if let submittedFeedback {
+                        Text("Saved response: \(submittedFeedback == .yes ? "Yes" : "No")")
+                            .font(.caption)
+                            .foregroundStyle(MindMarginTheme.textSecondary)
+                    }
                 }
             }
         }
@@ -281,7 +304,7 @@ struct MindMarginRecommendationCard: View {
 
     @ViewBuilder
     private func feedbackButton(title: String, feedbackValue: RecommendationFeedback, tint: Color, action: @escaping () -> Void) -> some View {
-        let isSelected = feedback == feedbackValue
+        let isSelected = selectedFeedback == feedbackValue
 
         Button(action: action) {
             Text(title)
