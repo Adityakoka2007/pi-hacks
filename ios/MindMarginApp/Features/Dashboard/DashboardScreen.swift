@@ -40,12 +40,6 @@ struct DashboardScreen: View {
 
                 forecastCard
 
-                statusCard
-
-                if let errorMessage = appModel.errorMessage {
-                    errorCard(errorMessage)
-                }
-
                 VStack(alignment: .leading, spacing: 12) {
                     MindMarginSectionHeader(title: "Top Factors")
 

@@ -73,9 +73,17 @@ interface CalendarEvent {
   is_back_to_back?: boolean
 }
 
+interface RecommendationFeedback {
+  recommendation_id?: string
+  title: string
+  category: string
+  was_helpful: boolean
+}
+
 interface RequestBody {
   target_date: string
   calendar_events?: CalendarEvent[]
+  recommendation_feedback?: RecommendationFeedback[]
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -89,6 +97,37 @@ const z = (value: number, mean: number, sd: number) =>
 
 /** Round to one decimal place. */
 const r1 = (n: number) => Math.round(n * 10) / 10
+
+const formatError = (err: unknown): string => {
+  if (err instanceof Error) {
+    return err.message
+  }
+
+  if (typeof err === "string") {
+    return err
+  }
+
+  if (err && typeof err === "object") {
+    const maybeMessage = Reflect.get(err, "message")
+    const maybeError = Reflect.get(err, "error")
+    const maybeDetails = Reflect.get(err, "details")
+    const maybeHint = Reflect.get(err, "hint")
+    const fragments = [maybeMessage, maybeError, maybeDetails, maybeHint]
+      .filter((value): value is string => typeof value === "string" && value.length > 0)
+
+    if (fragments.length > 0) {
+      return fragments.join(" | ")
+    }
+
+    try {
+      return JSON.stringify(err)
+    } catch {
+      return String(err)
+    }
+  }
+
+  return String(err)
+}
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -121,6 +160,7 @@ serve(async (req) => {
     const body: RequestBody = await req.json()
     const targetDate = body.target_date
     const calendarEvents = body.calendar_events ?? []
+    const recommendationFeedback = body.recommendation_feedback ?? []
 
     // ── Fetch all inputs in parallel ─────────────────────────────────────────
     const [
@@ -155,7 +195,7 @@ serve(async (req) => {
         .order("check_in_date", { ascending: false }),
       supabase
         .from("profiles")
-        .select("preferred_intervention_style")
+        .select("preferred_intervention_style, preferred_coping_strategies, avoided_coping_strategies, stress_triggers, support_style, preferred_reset_length")
         .eq("id", user.id)
         .maybeSingle(),
     ])
@@ -310,6 +350,11 @@ serve(async (req) => {
 
     // ── Build GPT prompt ──────────────────────────────────────────────────────
     const interventionStyle = profile?.preferred_intervention_style ?? "gentle"
+    const preferredCopingStrategies = profile?.preferred_coping_strategies ?? []
+    const avoidedCopingStrategies = profile?.avoided_coping_strategies ?? []
+    const stressTriggers = profile?.stress_triggers ?? []
+    const supportStyle = profile?.support_style ?? interventionStyle
+    const preferredResetLength = profile?.preferred_reset_length ?? "fifteen_minutes"
 
     let calendarSummary: string
     if (calendarEvents.length > 0) {
@@ -326,6 +371,39 @@ serve(async (req) => {
       calendarSummary = "No calendar data for this date"
     }
 
+    const helpfulFeedback = recommendationFeedback.filter((item) => item.was_helpful)
+    const unhelpfulFeedback = recommendationFeedback.filter((item) => !item.was_helpful)
+
+    const feedbackSummary = recommendationFeedback.length === 0
+      ? "No recommendation feedback has been provided yet."
+      : [
+          helpfulFeedback.length > 0
+            ? `Helpful before: ${helpfulFeedback.map((item) => `${item.title} (${item.category})`).join("; ")}`
+            : null,
+          unhelpfulFeedback.length > 0
+            ? `Not helpful before: ${unhelpfulFeedback.map((item) => `${item.title} (${item.category})`).join("; ")}`
+            : null,
+          "Avoid repeating ideas the user marked as not helpful unless their current data strongly requires a similar intervention, and if so, make the new advice noticeably different."
+        ]
+          .filter(Boolean)
+          .join("\n")
+
+    const copingProfileSummary = [
+      preferredCopingStrategies.length > 0
+        ? `Usually helpful: ${preferredCopingStrategies.join(", ")}`
+        : "Usually helpful: no coping preferences saved yet.",
+      avoidedCopingStrategies.length > 0
+        ? `Usually unhelpful: ${avoidedCopingStrategies.join(", ")}`
+        : null,
+      stressTriggers.length > 0
+        ? `Common stress triggers: ${stressTriggers.join(", ")}`
+        : null,
+      `Preferred support style: ${supportStyle}`,
+      `Preferred reset length: ${preferredResetLength}`,
+    ]
+      .filter(Boolean)
+      .join("\n")
+
     const prompt = `You are a compassionate wellness coach. A user's stress risk score for ${targetDate} is ${stressScore}/10 (${riskLevel} risk).
 
 Health data:
@@ -339,6 +417,14 @@ ${calendarSummary}
 
 Top stress factors by contribution: ${topFactors.length > 0 ? topFactors.join("; ") : "No strong factors identified"}
 Coaching style preference: ${interventionStyle}
+
+Coping profile:
+${copingProfileSummary}
+
+Recommendation feedback history:
+${feedbackSummary}
+
+Prioritize strategies the user already says are helpful when they fit the current stress drivers. Avoid strategies they marked as unhelpful unless absolutely necessary, and if you must use a similar category, make the recommendation feel noticeably different. Match the tone to their preferred support style and keep the action realistic for their preferred reset length.
 
 Return exactly 3 personalised, actionable recommendations as a JSON array — no other text:
 [
@@ -453,7 +539,7 @@ Return exactly 3 personalised, actionable recommendations as a JSON array — no
     )
 
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err)
+    const message = formatError(err)
     return new Response(
       JSON.stringify({ error: message }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }

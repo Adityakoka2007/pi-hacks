@@ -9,6 +9,7 @@ final class MindMarginAppModel: ObservableObject {
     enum OnboardingStep {
         case welcome
         case authentication
+        case copingQuiz
         case permissions
         case personalization
         case complete
@@ -54,6 +55,85 @@ final class MindMarginAppModel: ObservableObject {
         case graduate = "Graduate Student"
 
         var id: String { rawValue }
+    }
+
+    enum CopingStrategy: String, CaseIterable, Identifiable {
+        case walking = "Walking"
+        case exercise = "Exercise"
+        case breathing = "Breathing"
+        case music = "Music"
+        case journaling = "Journaling"
+        case talkingToAFriend = "Talking to a friend"
+        case aloneTime = "Quiet alone time"
+        case teaOrSnack = "Tea or snack"
+        case planning = "Planning"
+        case nap = "Short nap"
+
+        var id: String { rawValue }
+
+        var dbValue: String {
+            switch self {
+            case .walking: return "walking"
+            case .exercise: return "exercise"
+            case .breathing: return "breathing"
+            case .music: return "music"
+            case .journaling: return "journaling"
+            case .talkingToAFriend: return "talking"
+            case .aloneTime: return "alone_time"
+            case .teaOrSnack: return "tea_or_snack"
+            case .planning: return "planning"
+            case .nap: return "nap"
+            }
+        }
+    }
+
+    enum StressTrigger: String, CaseIterable, Identifiable {
+        case packedSchedule = "Packed schedule"
+        case poorSleep = "Poor sleep"
+        case exams = "Exams or presentations"
+        case socialOverload = "Social overload"
+        case lackOfStructure = "Lack of structure"
+        case conflict = "Conflict"
+
+        var id: String { rawValue }
+
+        var dbValue: String {
+            switch self {
+            case .packedSchedule: return "packed_schedule"
+            case .poorSleep: return "poor_sleep"
+            case .exams: return "exams"
+            case .socialOverload: return "social_overload"
+            case .lackOfStructure: return "lack_of_structure"
+            case .conflict: return "conflict"
+            }
+        }
+    }
+
+    enum SupportStyle: String, CaseIterable, Identifiable {
+        case calming = "Calming"
+        case practical = "Practical"
+        case encouraging = "Encouraging"
+        case direct = "Direct"
+
+        var id: String { rawValue }
+
+        var dbValue: String { rawValue.lowercased() }
+    }
+
+    enum ResetLength: String, CaseIterable, Identifiable {
+        case fiveMinutes = "5 min"
+        case fifteenMinutes = "15 min"
+        case thirtyPlusMinutes = "30+ min"
+
+        var id: String { rawValue }
+
+        var dbValue: String {
+            switch self {
+            case .fiveMinutes: return "five_minutes"
+            case .fifteenMinutes: return "fifteen_minutes"
+            case .thirtyPlusMinutes: return "thirty_plus_minutes"
+            }
+        }
     }
 
     enum DemoScenario: String, CaseIterable, Identifiable {
@@ -198,6 +278,11 @@ final class MindMarginAppModel: ObservableObject {
     @Published var reminderTime = Calendar.current.date(bySettingHour: 20, minute: 0, second: 0, of: .now) ?? .now
     @Published var communicationStyle: CommunicationStyle = .balanced
     @Published var studentType: StudentType = .college
+    @Published var selectedCopingStrategies: Set<CopingStrategy> = []
+    @Published var avoidedCopingStrategies: Set<CopingStrategy> = []
+    @Published var selectedStressTriggers: Set<StressTrigger> = []
+    @Published var supportStyle: SupportStyle = .practical
+    @Published var preferredResetLength: ResetLength = .fifteenMinutes
 
     @Published var stressLevel = 3
     @Published var energyLevel = 3
@@ -339,6 +424,10 @@ final class MindMarginAppModel: ObservableObject {
 
     var reminderTimeLabel: String {
         reminderTime.formatted(date: .omitted, time: .shortened)
+    }
+
+    var isCopingQuizReady: Bool {
+        !selectedCopingStrategies.isEmpty
     }
 
     var demoModeLabel: String {
@@ -559,7 +648,11 @@ final class MindMarginAppModel: ObservableObject {
                     preferredInterventionStyle: communicationStyle.rawValue,
                     userName: name,
                     email: email,
-                    password: password
+                    preferredCopingStrategies: selectedCopingStrategies.map(\.dbValue).sorted(),
+                    avoidedCopingStrategies: avoidedCopingStrategies.map(\.dbValue).sorted(),
+                    stressTriggers: selectedStressTriggers.map(\.dbValue).sorted(),
+                    supportStyle: supportStyle.dbValue,
+                    preferredResetLength: preferredResetLength.dbValue
                 )
                 accountName = name
                 accountEmail = email
@@ -567,10 +660,7 @@ final class MindMarginAppModel: ObservableObject {
                 hasAttemptedBackendSignIn = true
                 backendStatus = .connected
                 await StressNotificationManager.shared.syncPendingDeviceTokenIfPossible(using: supabaseService)
-                onboardingStep = permissionsReady ? .complete : .permissions
-                if permissionsReady {
-                    await syncProfilePreferences()
-                }
+                onboardingStep = .copingQuiz
             } catch {
                 backendStatus = .localOnly("Account creation failed: \(error.localizedDescription)")
                 errorMessage = error.localizedDescription
@@ -607,6 +697,29 @@ final class MindMarginAppModel: ObservableObject {
             }
 
             isAuthenticating = false
+        }
+    }
+
+    func continueFromCopingQuiz() {
+        if permissionsReady {
+            onboardingStep = .complete
+        } else {
+            onboardingStep = .permissions
+        }
+
+        Task {
+            await syncProfilePreferences()
+            if permissionsReady {
+                await refreshForecast()
+            }
+        }
+    }
+
+    func skipCopingQuiz() {
+        if permissionsReady {
+            onboardingStep = .complete
+        } else {
+            onboardingStep = .permissions
         }
     }
 
@@ -988,7 +1101,11 @@ final class MindMarginAppModel: ObservableObject {
                 preferredInterventionStyle: communicationStyle.rawValue,
                 userName: accountName.isEmpty ? nil : accountName,
                 email: accountEmail.isEmpty ? nil : accountEmail,
-                password: accountPassword.isEmpty ? nil : accountPassword
+                preferredCopingStrategies: selectedCopingStrategies.map(\.dbValue).sorted(),
+                avoidedCopingStrategies: avoidedCopingStrategies.map(\.dbValue).sorted(),
+                stressTriggers: selectedStressTriggers.map(\.dbValue).sorted(),
+                supportStyle: supportStyle.dbValue,
+                preferredResetLength: preferredResetLength.dbValue
             )
             backendStatus = .connected
         } catch {

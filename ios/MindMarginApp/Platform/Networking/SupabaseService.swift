@@ -219,7 +219,11 @@ final class SupabaseService {
         let preferredInterventionStyle: String
         let userName: String?
         let email: String?
-        let password: String?
+        let preferredCopingStrategies: [String]?
+        let avoidedCopingStrategies: [String]?
+        let stressTriggers: [String]?
+        let supportStyle: String?
+        let preferredResetLength: String?
 
         enum CodingKeys: String, CodingKey {
             case id
@@ -227,7 +231,11 @@ final class SupabaseService {
             case preferredInterventionStyle = "preferred_intervention_style"
             case userName = "user_name"
             case email
-            case password
+            case preferredCopingStrategies = "preferred_coping_strategies"
+            case avoidedCopingStrategies = "avoided_coping_strategies"
+            case stressTriggers = "stress_triggers"
+            case supportStyle = "support_style"
+            case preferredResetLength = "preferred_reset_length"
         }
     }
 
@@ -555,7 +563,11 @@ final class SupabaseService {
         preferredInterventionStyle: String,
         userName: String? = nil,
         email: String? = nil,
-        password: String? = nil
+        preferredCopingStrategies: [String]? = nil,
+        avoidedCopingStrategies: [String]? = nil,
+        stressTriggers: [String]? = nil,
+        supportStyle: String? = nil,
+        preferredResetLength: String? = nil
     ) async throws {
         guard let token = sessionToken, let userId else {
             throw SupabaseServiceError.notAuthenticated
@@ -567,7 +579,11 @@ final class SupabaseService {
             preferredInterventionStyle: preferredInterventionStyle.lowercased(),
             userName: userName,
             email: email,
-            password: password
+            preferredCopingStrategies: preferredCopingStrategies,
+            avoidedCopingStrategies: avoidedCopingStrategies,
+            stressTriggers: stressTriggers,
+            supportStyle: supportStyle,
+            preferredResetLength: preferredResetLength
         )
 
         try await upsert(table: "profiles", payload: payload, token: token, conflictColumns: "id")

@@ -10,6 +10,8 @@ struct OnboardingFlowView: View {
                 WelcomeScreen()
             case .authentication:
                 AuthenticationScreen()
+            case .copingQuiz:
+                CopingQuizScreen()
             case .permissions:
                 PermissionsScreen()
             case .personalization:
@@ -260,13 +262,184 @@ private struct AuthenticationScreen: View {
     }
 }
 
+private struct CopingQuizScreen: View {
+    @EnvironmentObject private var appModel: MindMarginAppModel
+
+    private let grid = [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)]
+
+    var body: some View {
+        ScrollView(showsIndicators: false) {
+            VStack(alignment: .leading, spacing: 24) {
+                progressDots(activeIndex: 0)
+                    .padding(.top, 16)
+
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("What helps you reset?")
+                        .font(.system(size: 34, weight: .semibold, design: .rounded))
+                        .foregroundStyle(MindMarginTheme.textPrimary)
+
+                    Text("Pick what usually helps when stress starts building. We’ll use this to personalize your recommendation style.")
+                        .font(.body)
+                        .foregroundStyle(MindMarginTheme.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                quizSection(
+                    title: "Usually helpful",
+                    subtitle: "Choose at least one.",
+                    content: {
+                        LazyVGrid(columns: grid, spacing: 10) {
+                            ForEach(MindMarginAppModel.CopingStrategy.allCases) { strategy in
+                                ChoiceButton(
+                                    title: strategy.rawValue,
+                                    isSelected: appModel.selectedCopingStrategies.contains(strategy)
+                                ) {
+                                    if appModel.selectedCopingStrategies.contains(strategy) {
+                                        appModel.selectedCopingStrategies.remove(strategy)
+                                    } else {
+                                        appModel.selectedCopingStrategies.insert(strategy)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                )
+
+                quizSection(
+                    title: "Usually not that helpful",
+                    subtitle: "Optional, but useful for avoiding poor-fit suggestions.",
+                    content: {
+                        LazyVGrid(columns: grid, spacing: 10) {
+                            ForEach(MindMarginAppModel.CopingStrategy.allCases) { strategy in
+                                ChoiceButton(
+                                    title: strategy.rawValue,
+                                    isSelected: appModel.avoidedCopingStrategies.contains(strategy)
+                                ) {
+                                    if appModel.avoidedCopingStrategies.contains(strategy) {
+                                        appModel.avoidedCopingStrategies.remove(strategy)
+                                    } else {
+                                        appModel.avoidedCopingStrategies.insert(strategy)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                )
+
+                quizSection(
+                    title: "What tends to trigger stress?",
+                    subtitle: "Optional.",
+                    content: {
+                        LazyVGrid(columns: grid, spacing: 10) {
+                            ForEach(MindMarginAppModel.StressTrigger.allCases) { trigger in
+                                ChoiceButton(
+                                    title: trigger.rawValue,
+                                    isSelected: appModel.selectedStressTriggers.contains(trigger)
+                                ) {
+                                    if appModel.selectedStressTriggers.contains(trigger) {
+                                        appModel.selectedStressTriggers.remove(trigger)
+                                    } else {
+                                        appModel.selectedStressTriggers.insert(trigger)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                )
+
+                quizSection(
+                    title: "What kind of support works best?",
+                    subtitle: nil,
+                    content: {
+                        HStack(spacing: 10) {
+                            ForEach(MindMarginAppModel.SupportStyle.allCases) { style in
+                                ChoiceButton(
+                                    title: style.rawValue,
+                                    isSelected: appModel.supportStyle == style
+                                ) {
+                                    appModel.supportStyle = style
+                                }
+                            }
+                        }
+                    }
+                )
+
+                quizSection(
+                    title: "How much time do you usually have?",
+                    subtitle: nil,
+                    content: {
+                        HStack(spacing: 10) {
+                            ForEach(MindMarginAppModel.ResetLength.allCases) { length in
+                                ChoiceButton(
+                                    title: length.rawValue,
+                                    isSelected: appModel.preferredResetLength == length
+                                ) {
+                                    appModel.preferredResetLength = length
+                                }
+                            }
+                        }
+                    }
+                )
+
+                MindMarginPrimaryButton(
+                    title: "Save and continue",
+                    systemImage: "arrow.right",
+                    disabled: !appModel.isCopingQuizReady,
+                    action: appModel.continueFromCopingQuiz
+                )
+
+                Button("Skip for now") {
+                    appModel.skipCopingQuiz()
+                }
+                .buttonStyle(.plain)
+                .font(.headline)
+                .foregroundStyle(MindMarginTheme.indigo)
+                .frame(maxWidth: .infinity)
+                .padding(.bottom, 32)
+            }
+            .padding(.horizontal, 24)
+        }
+        .background(MindMarginTheme.background.ignoresSafeArea())
+    }
+
+    @ViewBuilder
+    private func quizSection<Content: View>(title: String, subtitle: String?, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title)
+                    .font(.headline)
+                    .foregroundStyle(MindMarginTheme.textPrimary)
+
+                if let subtitle {
+                    Text(subtitle)
+                        .font(.footnote)
+                        .foregroundStyle(MindMarginTheme.textSecondary)
+                }
+            }
+
+            content()
+        }
+    }
+
+    private func progressDots(activeIndex: Int) -> some View {
+        HStack(spacing: 8) {
+            ForEach(0..<2, id: \.self) { index in
+                Circle()
+                    .fill(index == activeIndex ? MindMarginTheme.indigo : MindMarginTheme.textTertiary.opacity(0.4))
+                    .frame(width: 7, height: 7)
+            }
+        }
+        .frame(maxWidth: .infinity)
+    }
+}
+
 private struct PermissionsScreen: View {
     @EnvironmentObject private var appModel: MindMarginAppModel
 
     var body: some View {
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: 24) {
-                progressDots(activeIndex: 0)
+                progressDots(activeIndex: 1)
                     .padding(.top, 16)
 
                 VStack(alignment: .leading, spacing: 8) {
