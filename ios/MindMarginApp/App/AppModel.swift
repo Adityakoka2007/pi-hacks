@@ -39,6 +39,7 @@ final class MindMarginAppModel: ObservableObject {
 
     enum Route: Hashable {
         case actionPlan
+        case accountDetails
     }
 
     enum CommunicationStyle: String, CaseIterable, Identifiable {
@@ -799,6 +800,15 @@ final class MindMarginAppModel: ObservableObject {
             backendStatus = .localOnly("Signed out. Cloud sync is off until you sign in again.")
         } else {
             backendStatus = .notConfigured
+        }
+    }
+
+    func saveAccountName(_ name: String) {
+        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        accountName = trimmedName
+
+        Task {
+            await syncProfilePreferences()
         }
     }
 

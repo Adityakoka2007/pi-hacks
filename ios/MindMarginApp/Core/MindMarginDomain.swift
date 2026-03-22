@@ -212,7 +212,7 @@ struct RecommendationEngine: RecommendationProviding {
             items.append(
                 Recommendation(
                     id: UUID(),
-                    title: "Take a 10-minute walk before the evening push",
+                    title: "Take a 10-minute walk",
                     body: "Use a short reset walk to bring your stress response down.",
                     rationale: "A little movement improves regulation and makes focus feel less effortful.",
                     category: "movement"

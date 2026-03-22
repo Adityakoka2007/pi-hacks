@@ -20,20 +20,25 @@ struct SettingsScreen: View {
                     SettingsSection(title: "Account") {
                         VStack(alignment: .leading, spacing: 12) {
                             Button {
-                                Task { await appModel.signInWithGoogle() }
+                                appModel.navigationPath.append(.accountDetails)
                             } label: {
                                 HStack(spacing: 12) {
                                     ZStack {
                                         RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                            .fill(Color.black.opacity(0.06))
+                                            .fill(MindMarginTheme.indigo.opacity(0.12))
                                             .frame(width: 38, height: 38)
-                                        Image(systemName: "g.circle.fill")
+                                        Image(systemName: "person.text.rectangle.fill")
                                             .font(.subheadline.weight(.semibold))
-                                            .foregroundStyle(Color(hex: 0x4285F4))
+                                            .foregroundStyle(MindMarginTheme.indigo)
                                     }
-                                    Text("Continue with Google")
-                                        .font(.body.weight(.medium))
-                                        .foregroundStyle(MindMarginTheme.textPrimary)
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text("About your account")
+                                            .font(.body.weight(.medium))
+                                            .foregroundStyle(MindMarginTheme.textPrimary)
+                                        Text("View your email and edit your name")
+                                            .font(.subheadline)
+                                            .foregroundStyle(MindMarginTheme.textSecondary)
+                                    }
                                     Spacer()
                                     Image(systemName: "chevron.right")
                                         .font(.caption.weight(.bold))
@@ -48,7 +53,7 @@ struct SettingsScreen: View {
                             }
                             .buttonStyle(.plain)
 
-                            if appModel.backendStatus.isConnected {
+                            /*if appModel.backendStatus.isConnected {
                                 Button {
                                     appModel.signOutFromBackend()
                                 } label: {
@@ -74,13 +79,8 @@ struct SettingsScreen: View {
                                     }
                                 }
                                 .buttonStyle(.plain)
-                            }
+                            }*/
                         }
-
-                        Text("Add pihacks://auth-callback to Supabase Auth redirect URLs. Enable Google in the dashboard. (Sign in with Apple requires a paid Apple Developer Program membership.)")
-                            .font(.caption)
-                            .foregroundStyle(MindMarginTheme.textSecondary)
-                            .fixedSize(horizontal: false, vertical: true)
                     }
                 }
 
@@ -229,6 +229,101 @@ struct SettingsScreen: View {
             }
             .padding(.horizontal, 24)
             .padding(.top, 20)
+        }
+    }
+}
+
+struct AccountDetailsScreen: View {
+    @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var appModel: MindMarginAppModel
+    @State private var draftName = ""
+
+    var body: some View {
+        ScrollView(showsIndicators: false) {
+            VStack(alignment: .leading, spacing: 20) {
+                Button {
+                    dismiss()
+                } label: {
+                    Label("Settings", systemImage: "chevron.left")
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(MindMarginTheme.textSecondary)
+                }
+                .buttonStyle(.plain)
+                .padding(.top, 12)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("About your account")
+                        .font(.system(size: 34, weight: .semibold, design: .rounded))
+                        .foregroundStyle(MindMarginTheme.textPrimary)
+
+                    Text("View your account details and update your name.")
+                        .font(.subheadline)
+                        .foregroundStyle(MindMarginTheme.textSecondary)
+                }
+
+                MindMarginCard(padding: 18) {
+                    VStack(alignment: .leading, spacing: 18) {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Name")
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(MindMarginTheme.textPrimary)
+
+                            TextField("Your name", text: $draftName)
+                                .textInputAutocapitalization(.words)
+                                .autocorrectionDisabled()
+                                .foregroundStyle(Color.black)
+                                .tint(Color.black)
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 14)
+                                .background(.white, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                                .overlay {
+                                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                        .stroke(MindMarginTheme.border, lineWidth: 1)
+                                }
+                        }
+
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Email")
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(MindMarginTheme.textPrimary)
+
+                            Text(appModel.accountEmail.isEmpty ? "Not available" : appModel.accountEmail)
+                                .font(.body)
+                                .foregroundStyle(MindMarginTheme.textSecondary)
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 14)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .background(Color.black.opacity(0.03), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                                .overlay {
+                                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                        .stroke(MindMarginTheme.border, lineWidth: 1)
+                                }
+                        }
+
+                        Button {
+                            appModel.saveAccountName(draftName)
+                        } label: {
+                            Text("Save Changes")
+                                .font(.headline)
+                                .foregroundStyle(.white)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 16)
+                                .background(MindMarginTheme.indigo, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(draftName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        .opacity(draftName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 0.55 : 1)
+                    }
+                }
+            }
+            .padding(.horizontal, 24)
+            .padding(.bottom, 32)
+        }
+        .background(MindMarginTheme.background.ignoresSafeArea())
+        .navigationBarBackButtonHidden(true)
+        .toolbar(.hidden, for: .navigationBar)
+        .onAppear {
+            draftName = appModel.accountName
         }
     }
 }

@@ -41,6 +41,8 @@ private struct MainAppView: View {
                 switch route {
                 case .actionPlan:
                     ActionPlanScreen()
+                case .accountDetails:
+                    AccountDetailsScreen()
                 }
             }
             .onAppear {
